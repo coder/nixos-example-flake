@@ -100,6 +100,7 @@
     gh
     git
     gnumake
+    bat
     htop
     jq
     nix-output-monitor

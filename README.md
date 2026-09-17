@@ -12,17 +12,20 @@ settings — is decided here, not in the template.
 
 | Path | Owner | Contents |
 | --- | --- | --- |
-| `flake.nix` | you | inputs, the per-architecture `nixosConfigurations` |
+| `flake.nix` | you | inputs and the per-architecture `nixosConfigurations` |
 | `configuration.nix` | **you** | the environment: packages, `nix.*`, swap, timezone |
-| `hardware/ec2.nix` | platform | imports `amazon-image.nix`; do not fight it |
-| `coder.nix` | Coder | the single import that wires the agent in |
-| `coder/options.nix` | Coder | `options.coder.*` |
-| `coder/agent.nix` | Coder | the `coder-agent.service` unit |
-| `coder/user.nix` | Coder | workspace user, sudo, `nix-ld` |
+| `hardware/ec2.nix` | platform | imports `amazon-image.nix`; optional facter hook |
+| `modules/coder/index.nix` | Coder | the single import that wires the agent in |
+| `modules/coder/options.nix` | Coder | `options.coder.*` |
+| `modules/coder/agent.nix` | Coder | the `coder-agent.service` unit and `coder` on PATH |
+| `modules/coder/user.nix` | Coder | workspace user, sudo, `nix-ld` |
+| `modules/coder/vars.nix` | Coder | maps injected values onto options |
 | `vars/flake.nix` | Coder | per-workspace values, replaced at rebuild time |
 
-`coder/` is self-contained and is intended to move to its own flake
-(`github:coder/nixos-coder`). When it does, adopting it in an existing
+`flake.nix` and `configuration.nix` contain no Coder-specific settings: the
+integration is one import, and `configuration.nix` does not mention `coder.*`
+at all. `modules/coder/` is self-contained and is intended to move to its own
+flake (`github:coder/nixos-coder`). When it does, adopting it in an existing
 configuration is a two-line change:
 
 ```nix
@@ -110,6 +113,35 @@ nixpkgs independently at boot, which is slow and not reproducible — and a lock
 file that is merely untracked is invisible to a Git flake reference, because
 Nix only sees committed files.
 
+## nixos-facter
+
+The facter modules are upstream in nixpkgs as `hardware.facter.*`, so there is
+no input to add and nothing to enable — `hardware.facter.enable` derives from
+whether a report exists. `hardware/ec2.nix` picks one up automatically if you
+drop it next to that file:
+
+```console
+sudo nix-shell -p nixos-facter --run 'nixos-facter -o hardware/facter.json'
+```
+
+No report is shipped, because on EC2 it measurably changes nothing. Facter
+replaces the driver and kernel-module half of `hardware-configuration.nix` —
+it never generates `fileSystems`, `swapDevices` or a bootloader device — and
+`amazon-image.nix` already covers everything it would contribute here: its
+initrd modules are all in nixpkgs' defaults, microcode and firmware are gated
+on the machine being bare metal, and its virtualisation detection reports
+`amazon`, which the nixpkgs module does not match. The measured delta is zero
+initrd modules.
+
+It is wired up anyway because it costs nothing when absent and is the right
+tool the moment this configuration targets hardware that is not EC2.
+
+One consequence is reflected in `flake.nix`: a report sets
+`nixpkgs.hostPlatform` with `mkDefault`, which outranks the value derived from
+`nixosSystem`'s `system` argument. So the platform is pinned explicitly per
+configuration rather than relying on that argument — otherwise an x86_64
+report would silently build an x86_64 closure for the aarch64 attribute.
+
 ## Things that will break the machine
 
 - **Removing the `amazon-image.nix` import.** It declares the root filesystem,
@@ -125,6 +157,9 @@ Nix only sees committed files.
   relies on stop applying.
 - **Bumping `system.stateVersion`** to something newer than the AMI. It is a
   compatibility marker, not a version to keep current.
+- **Pinning `nixpkgs.hostPlatform` to the wrong value**, or removing it and
+  relying on `nixosSystem`'s `system` argument while a facter report is
+  present. See above.
 - **Pinning `coder.uid`** without checking what else claims that UID. The EC2
   images enable `amazon-ssm-agent`, and its `ssm-user` takes the first free
   UID without regard for statically assigned ones -- so pinning the workspace

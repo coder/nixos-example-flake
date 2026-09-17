@@ -17,6 +17,9 @@
 #   ${runtimeDir}/init.sh     0755   coder_agent.init_script, verbatim
 #   ${runtimeDir}/ready       0644   marker, written last
 #
+# It also pins where the agent unpacks its own CLI, so that `coder` can be
+# put on PATH declaratively -- see binDir below.
+#
 # The token must never be passed into Nix - not as a flake input, `--argstr`,
 # `specialArgs` or `builtins.getEnv`. It would be baked into a derivation,
 # land world-readable in /nix/store, persist across generations and past
@@ -67,14 +70,41 @@ let
       fi
     done
 
+    # Coder's init script does `cd "$BINARY_DIR"` without creating it.
+    mkdir -p ${binDir}
+
     set -a
     . "$env_file"
     set +a
 
     exec "$init_script"
   '';
+
+  # Coder's init script honours BINARY_DIR and otherwise unpacks the CLI into
+  # a fresh mktemp directory. Pinning it gives the wrapper below something
+  # stable to point at.
+  binDir = "${cfg.runtimeDir}/bin";
 in
 lib.mkIf cfg.enable {
+  # `coder stat`, which the template'"'"'s metadata scripts call, has to be
+  # reachable from an ordinary login shell.
+  #
+  # The agent prepends its own directory to the PATH it hands to scripts, but
+  # on NixOS those scripts run through a login shell and /etc/profile rebuilds
+  # PATH from the system environment, dropping it again. The result is a
+  # workspace whose CPU/memory/disk metrics all read "coder: command not
+  # found". A wrapper in systemPackages lands in /run/current-system/sw/bin,
+  # which every shell has.
+  environment.systemPackages = [
+    (pkgs.writeShellScriptBin "coder" ''
+      if [ ! -x ${binDir}/coder ]; then
+        echo "coder: the agent CLI is not available yet (${binDir}/coder)" >&2
+        exit 127
+      fi
+      exec ${binDir}/coder "$@"
+    '')
+  ];
+
   systemd.services.coder-agent = {
     description = "Coder Agent";
     documentation = [ "https://coder.com/docs" ];
@@ -109,6 +139,8 @@ lib.mkIf cfg.enable {
       ]
       ++ lib.optional config.nix.enable config.nix.package
       ++ cfg.agent.extraPackages;
+
+    environment.BINARY_DIR = binDir;
 
     serviceConfig = {
       Type = "simple";

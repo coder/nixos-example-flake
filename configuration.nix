@@ -1,15 +1,10 @@
 # The machine configuration: this is the file you edit.
 #
-# Everything Coder needs is in `coder.nix`; this file is the environment you
-# actually want. All `nix.*` settings live here deliberately - Nix
-# configuration is the machine owner's business, and the Coder module never
-# touches it.
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+# An ordinary NixOS configuration with no knowledge of Coder. The workspace
+# integration is a separate import (modules/coder/index.nix), and all `nix.*`
+# settings live here deliberately -- Nix configuration is the machine owner's
+# business and the Coder module never touches it.
+{ pkgs, ... }:
 {
   # Must track the NixOS release the AMI was built from, not "whatever is
   # newest". It is a compatibility marker for stateful defaults, so bumping it
@@ -54,19 +49,13 @@
   # The Nix store lives on the root volume and generations are not free.
   boot.loader.grub.configurationLimit = 20;
 
-  # Granting the workspace user Nix trust lets project flakes bring their own
-  # binary caches (`extra-substituters` + `--accept-flake-config`) instead of
-  # silently building from source. It also effectively grants root, since a
-  # trusted user can have arbitrary unsigned paths imported and activated.
-  #
-  # That is an acceptable trade for a single-tenant dev workspace, which is
-  # what a Coder workspace is. If you would rather not, set it to false and
-  # declare the caches system-wide in `nix.settings.substituters` +
-  # `nix.settings.trusted-public-keys`, which needs no client trust at all.
-  coder.trustUser = true;
-  nix.settings.trusted-users = [
-    "root"
-  ] ++ lib.optional config.coder.trustUser config.coder.user;
+  # Members of wheel may add binary caches and import unsigned paths. That
+  # also effectively grants root, which is an acceptable trade on a
+  # single-tenant development machine and not one anywhere else. The
+  # alternative is to declare caches system-wide in `nix.settings.substituters`
+  # and `nix.settings.trusted-public-keys`, which needs no client trust.
+  # root is already trusted by default; this adds the wheel group.
+  nix.settings.trusted-users = [ "@wheel" ];
 
   # ---------------------------------------------------------------------------
   # Memory
@@ -88,9 +77,8 @@
   # Environment
   # ---------------------------------------------------------------------------
 
-  # `coder_script` cron expressions are evaluated agent-side against the
-  # host's local time, so pinning the zone is what makes a schedule written in
-  # the template mean what its author intended.
+  # Scheduled jobs are evaluated against the host's local time, so pinning the
+  # zone is what makes any schedule mean what its author intended.
   time.timeZone = "UTC";
 
   environment.systemPackages = with pkgs; [
@@ -114,5 +102,5 @@
   programs.bash.completion.enable = true;
   programs.git.enable = true;
 
-  coder.shell = pkgs.bashInteractive;
+  users.defaultUserShell = pkgs.bashInteractive;
 }

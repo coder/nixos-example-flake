@@ -20,7 +20,6 @@ lib.mkIf cfg.enable {
     home = "/home/${cfg.user}";
     createHome = true;
     extraGroups = cfg.extraGroups;
-    shell = lib.mkIf (cfg.shell != null) cfg.shell;
   };
 
   # `coder_script` bodies run as the workspace user through its login shell

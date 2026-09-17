@@ -53,27 +53,7 @@
       default = [ "wheel" ];
     };
 
-    shell = lib.mkOption {
-      description = "Login shell for the workspace user.";
-      type = lib.types.nullOr lib.types.package;
-      default = null;
-    };
 
-    trustUser = lib.mkOption {
-      description = ''
-        Whether the workspace user should be a Nix trusted user.
-
-        Declared here so that the option surface is complete, but
-        deliberately *not* acted on by this module: granting Nix trust
-        effectively grants root, so it must be an explicit choice in the
-        machine configuration rather than something importing the Coder
-        module turns on silently.
-
-        See `configuration.nix` for the `nix.settings.trusted-users` wiring.
-      '';
-      type = lib.types.bool;
-      default = false;
-    };
 
     runtimeDir = lib.mkOption {
       description = ''

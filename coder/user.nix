@@ -6,14 +6,16 @@ let
   ws = cfg.workspace;
 in
 lib.mkIf cfg.enable {
+  # The group always has to exist, since the user references it; only the
+  # numeric id is conditional.
   users.groups.${cfg.user} = {
-    gid = lib.mkDefault cfg.uid;
+    gid = lib.mkIf (cfg.uid != null) (lib.mkDefault cfg.uid);
   };
 
   users.users.${cfg.user} = {
     description = "Coder workspace user";
     isNormalUser = true;
-    uid = cfg.uid;
+    uid = lib.mkIf (cfg.uid != null) cfg.uid;
     group = cfg.user;
     home = "/home/${cfg.user}";
     createHome = true;

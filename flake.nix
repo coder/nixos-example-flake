@@ -7,11 +7,18 @@
     # Per-workspace values, replaced at rebuild time by the Coder template
     # with `--override-input coder-vars path:/etc/coder/vars`. See vars/flake.nix.
     #
-    # Declaring the input is what makes the override possible: `nix` will only
-    # override inputs a flake already has. Keeping the default inside this
-    # repository means `nix build` works unchanged outside Coder.
+    # Declaring the input is what makes the override possible: Nix will only
+    # override an input a flake already has. The default provides the values
+    # used when this flake is evaluated outside Coder (CI, `nix build`), and
+    # is never fetched when the template overrides it.
+    #
+    # Referenced as an absolute subflake URL rather than `path:./vars`.
+    # Relative path inputs cannot always be resolved from a lock file --
+    # "cannot fetch input 'path:./vars' because it uses a relative path" --
+    # and they re-resolve on every evaluation, which makes Nix want to
+    # rewrite the lock of a read-only remote flake on every rebuild.
     coder-vars = {
-      url = "path:./vars";
+      url = "github:coder/nixos-example-flake?dir=vars";
       flake = true;
     };
   };

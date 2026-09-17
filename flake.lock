@@ -2,14 +2,19 @@
   "nodes": {
     "coder-vars": {
       "locked": {
-        "lastModified": 1,
-        "narHash": "sha256-UhK3IcMYMZJqA4kzBcTSS/H8z+xx1FCpmRbEyA6k+4Y=",
-        "path": "./vars",
-        "type": "path"
+        "dir": "vars",
+        "lastModified": 1789650504,
+        "narHash": "sha256-sDVUU7L/m57Js2JqdD1CsxVtuE8MFdrMHW7qhw84ZuE=",
+        "owner": "coder",
+        "repo": "nixos-example-flake",
+        "rev": "1c2b99e70e29471f4ae611c32a7e40ba3b45d7c5",
+        "type": "github"
       },
       "original": {
-        "path": "./vars",
-        "type": "path"
+        "dir": "vars",
+        "owner": "coder",
+        "repo": "nixos-example-flake",
+        "type": "github"
       }
     },
     "nixpkgs": {

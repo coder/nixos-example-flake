@@ -64,6 +64,18 @@ as [`vars/flake.nix`](vars/flake.nix). This is an ordinary, pure flake
 mechanism: no `--impure`, and no knowledge of the instance leaks into the
 configuration.
 
+The input's default is the absolute subflake URL
+`github:coder/nixos-example-flake?dir=vars`, not `path:./vars`. That is
+deliberate: a relative path input cannot always be resolved from a lock file
+(`cannot fetch input 'path:./vars' because it uses a relative path`) and it
+re-resolves on every evaluation, which makes Nix try to rewrite the lock of a
+read-only remote flake on every single rebuild. If you fork this repository,
+point that URL at your own fork -- or at any other trivial flake exposing a
+`coderVars` attribute.
+
+The default is never fetched when the template overrides it, so it only
+affects evaluating this flake by hand.
+
 > **Never add a secret to `coder-vars`.** Its contents are copied into
 > `/nix/store`, which is world-readable to every process on the workspace and
 > persists across generations. The agent token is passed at runtime through
@@ -78,6 +90,15 @@ workspace. Evaluation catches essentially every module and option error:
 nix eval --raw .#nixosConfigurations.workspace-x86_64.config.system.build.toplevel.drvPath
 nix eval --raw .#nixosConfigurations.workspace-aarch64.config.system.build.toplevel.drvPath
 nix build .#toplevel            # builds the closure for your native arch
+```
+
+To check how a configuration behaves with particular workspace values, point
+`coder-vars` at a local copy:
+
+```console
+nix eval --json .#nixosConfigurations.workspace-x86_64.config \
+  --override-input coder-vars path:./vars --no-write-lock-file \
+  --apply 'c: { user = c.coder.user; host = c.networking.hostName; }'
 ```
 
 Evaluating both attributes is worth the few seconds: the aarch64 configuration
@@ -104,6 +125,12 @@ Nix only sees committed files.
   relies on stop applying.
 - **Bumping `system.stateVersion`** to something newer than the AMI. It is a
   compatibility marker, not a version to keep current.
+- **Pinning `coder.uid`** without checking what else claims that UID. The EC2
+  images enable `amazon-ssm-agent`, and its `ssm-user` takes the first free
+  UID without regard for statically assigned ones -- so pinning the workspace
+  user to 1000 yields two accounts sharing it, which silently gives an SSM
+  session the workspace user's identity. `coder.uid` is null by default for
+  this reason.
 
 ## Recovery
 

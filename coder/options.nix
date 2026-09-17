@@ -27,12 +27,21 @@
 
     uid = lib.mkOption {
       description = ''
-        Fixed UID for the workspace user. Pinning it keeps file ownership
-        stable if a home volume is ever detached and reattached to a new
-        instance.
+        UID for the workspace user, or null to let NixOS allocate one.
+
+        Null by default because a pinned UID collides in practice: the EC2
+        images enable `amazon-ssm-agent`, whose `ssm-user` is allocated the
+        first free UID (1000) without regard for statically assigned ones,
+        so pinning the workspace user to 1000 produces two accounts sharing
+        it -- which silently gives an SSM session the workspace user's
+        identity.
+
+        Worth setting if you attach a home volume that has to keep stable
+        file ownership across instances. In that case make sure nothing else
+        on the machine claims the same UID.
       '';
-      type = lib.types.int;
-      default = 1000;
+      type = lib.types.nullOr lib.types.int;
+      default = null;
     };
 
     extraGroups = lib.mkOption {

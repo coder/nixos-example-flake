@@ -63,7 +63,27 @@ let
     fi
 
     echo "coder: staging the next generation from $flake#${cfg.flakeAttr}"
-    if nixos-rebuild boot --flake "$flake#${cfg.flakeAttr}" --print-build-logs; then
+
+    # Deliberately not `nixos-rebuild boot`. nixos-rebuild runs
+    # switch-to-configuration inside a transient `systemd-run` unit, and
+    # starting any unit during shutdown is refused:
+    #
+    #   Transaction for nixos-rebuild-switch-to-configuration.service/start
+    #   is destructive (shutdown.target has 'start' job queued ...)
+    #
+    # so the build would succeed and the generation would never become the
+    # boot default. The three steps below are what `boot` means -- build the
+    # closure, point the system profile at it, write the bootloader entry --
+    # with the last one invoked directly, which needs no new unit.
+    stage_generation() {
+      local toplevel
+      toplevel=$(nix build --no-link --print-out-paths --print-build-logs \
+        "$flake#nixosConfigurations.${cfg.flakeAttr}.config.system.build.toplevel") || return 1
+      nix-env --profile /nix/var/nix/profiles/system --set "$toplevel" || return 1
+      "$toplevel"/bin/switch-to-configuration boot || return 1
+    }
+
+    if stage_generation; then
       printf 'ok %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$marker"
       echo "coder: staged; the next boot will use it"
     else

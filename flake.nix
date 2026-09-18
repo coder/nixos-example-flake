@@ -22,10 +22,15 @@
             ./hardware/ec2.nix
             ./configuration.nix
             ./modules/coder/index.nix
-            # Set here rather than through nixosSystem's `system` argument,
-            # which some hardware-detection modules can outrank with a
-            # mkDefault of their own.
-            { nixpkgs.hostPlatform = system; }
+            {
+              # Set here rather than through nixosSystem's `system` argument,
+              # which some hardware-detection modules can outrank with a
+              # mkDefault of their own.
+              nixpkgs.hostPlatform = system;
+              # So the shutdown staging hook rebuilds the same attribute this
+              # machine was built from, without the template telling it.
+              coder.flakeAttr = attrFor system;
+            }
           ];
         };
     in

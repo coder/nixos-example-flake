@@ -134,12 +134,24 @@ deliberate:
 - It is ordered `after` `network.target` and `nix-daemon.service`. Units stop
   in reverse start order, so this stops *before* they do, while a rebuild can
   still fetch and build.
+- It does not call `nixos-rebuild boot`. `nixos-rebuild` runs
+  `switch-to-configuration` inside a transient `systemd-run` unit, and starting
+  any unit once `shutdown.target` is queued is refused as a destructive
+  transaction — the build would succeed and the generation would silently never
+  become the boot default. The script therefore does the three steps `boot`
+  means itself: build the toplevel, point the system profile at it, and run
+  `switch-to-configuration boot` directly.
 
 Coder itself cannot wait for anything at stop — its agent protocol has no
 shutdown RPC, and the SIGTERM that would trigger a stop script only arrives
 because the stop already happened. So this is a systemd mechanism, not a Coder
 one. EC2 also does not document how long it tolerates a graceful shutdown, so
-`timeoutSec` is an upper bound on our side rather than a promise.
+`timeoutSec` is an upper bound on our side rather than a promise. Measured on a
+`t3.medium` in `eu-west-3`: a stop that staged a small generation took 93s end
+to end, against 99s for a stop with nothing to do — the staging is lost in the
+noise of the stop itself. When the checkout is clean, unchanged since the last
+rebuild and already activated, the unit exits in milliseconds without touching
+Nix at all, so an ordinary stop is never slower for it.
 
 ## Verifying a change before you push
 

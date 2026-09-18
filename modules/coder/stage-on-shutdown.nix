@@ -39,6 +39,14 @@ let
 
     flake=${lib.escapeShellArg cfg.flakeDir}
     marker=${lib.escapeShellArg "${cfg.stateDir}/staged-at-shutdown"}
+    log=${lib.escapeShellArg "${cfg.stateDir}/stage-on-shutdown.log"}
+
+    # Everything below is also written to a file, because the journal is not
+    # persistent by default and this runs while the machine is going away --
+    # so on the next boot the journal for this run is gone and a failure here
+    # would be undiagnosable.
+    exec > >(tee -a "$log") 2>&1
+    echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) shutdown staging ==="
 
     [ -e "$flake/flake.nix" ] || exit 0
 
@@ -54,8 +62,8 @@ let
       exit 0
     fi
 
-    echo "coder: staging the next generation from $flake"
-    if nixos-rebuild boot --flake "$flake#${cfg.flakeAttr}"; then
+    echo "coder: staging the next generation from $flake#${cfg.flakeAttr}"
+    if nixos-rebuild boot --flake "$flake#${cfg.flakeAttr}" --print-build-logs; then
       printf 'ok %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$marker"
       echo "coder: staged; the next boot will use it"
     else

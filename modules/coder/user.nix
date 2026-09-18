@@ -3,7 +3,6 @@
 { config, lib, ... }:
 let
   cfg = config.coder;
-  ws = cfg.workspace;
 in
 lib.mkIf cfg.enable {
   # The group always has to exist, since the user references it; only the
@@ -37,26 +36,21 @@ lib.mkIf cfg.enable {
     "d ${cfg.logDir}   0755 root       root      -"
     "d ${cfg.stateDir} 0755 root       root      -"
     "d /home/${cfg.user} 0700 ${cfg.user} ${cfg.user} -"
+    # Owned by the workspace user so the configuration can be edited without
+    # sudo; rebuilding it still needs sudo.
+    "d ${cfg.flakeDir} 0755 ${cfg.user} ${cfg.user} -"
   ];
 
-  # Pre-seed git authorship from the workspace owner so the first commit in a
-  # fresh workspace is not attributed to "root@ip-10-0-0-1". Written as
-  # system-level config rather than into the user's home so that it never
-  # fights a dotfiles module: /etc/gitconfig is the lowest-precedence layer.
-  environment.etc."gitconfig" = lib.mkIf (ws.ownerEmail != "") {
-    text = ''
-      [user]
-      	name = ${if ws.ownerName != "" then ws.ownerName else ws.owner}
-      	email = ${ws.ownerEmail}
-      [init]
-      	defaultBranch = main
-      [safe]
-      	directory = *
-    '';
-  };
-
-  environment.sessionVariables = lib.mkMerge [
-    (lib.mkIf (ws.accessUrl != "") { CODER_URL = ws.accessUrl; })
-    (lib.mkIf (ws.name != "") { CODER_WORKSPACE_NAME = ws.name; })
-  ];
+  # Git identity is not set here. It is per-user, per-workspace state that
+  # this module has no pure way to learn -- the template supplies it through
+  # the registry's git-config module, which works against any flake. The
+  # runtime facts about the workspace are in /run/coder/workspace.json if a
+  # configuration wants them.
+  #
+  # `safe.directory` is set though, because /etc/nixos is a git checkout owned
+  # by the workspace user that root also operates on during a rebuild.
+  environment.etc."gitconfig".text = ''
+    [safe]
+    	directory = ${cfg.flakeDir}
+  '';
 }

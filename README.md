@@ -14,19 +14,19 @@ settings — is decided here, not in the template.
 | --- | --- | --- |
 | `flake.nix` | you | inputs and the per-architecture `nixosConfigurations` |
 | `configuration.nix` | **you** | the environment: packages, `nix.*`, swap, timezone |
-| `hardware/ec2.nix` | platform | imports `amazon-image.nix`; optional facter hook |
+| `hardware/ec2.nix` | platform | imports `amazon-image.nix` |
 | `modules/coder/index.nix` | Coder | the single import that wires the agent in |
 | `modules/coder/options.nix` | Coder | `options.coder.*` |
 | `modules/coder/agent.nix` | Coder | the `coder-agent.service` unit and `coder` on PATH |
 | `modules/coder/user.nix` | Coder | workspace user, sudo, `nix-ld` |
-| `modules/coder/vars.nix` | Coder | maps injected values onto options |
-| `vars/flake.nix` | Coder | per-workspace values, replaced at rebuild time |
+| `modules/coder/stage-on-shutdown.nix` | Coder | builds the next generation at shutdown |
 
 `flake.nix` and `configuration.nix` contain no Coder-specific settings: the
 integration is one import, and `configuration.nix` does not mention `coder.*`
-at all. `modules/coder/` is self-contained and is intended to move to its own
-flake (`github:coder/nixos-coder`). When it does, adopting it in an existing
-configuration is a two-line change:
+at all. There are no injected evaluation inputs, so this flake builds
+identically by hand and under the template. `modules/coder/` is self-contained
+and is intended to move to its own flake (`github:coder/nixos-coder`). When it
+does, adopting it in an existing configuration is a two-line change:
 
 ```nix
 inputs.coder.url = "github:coder/nixos-coder";
@@ -49,59 +49,107 @@ derives the name from the chosen EC2 instance type, so the AMI architecture,
 it accepts an `$ARCH` placeholder (`workspace-$ARCH`) if you keep the
 per-architecture split, or a fixed name if you do not.
 
-## Per-workspace values
+## Where the configuration lives on the workspace
 
-Values that differ between workspaces — the workspace name, its owner, the
-deployment URL — are injected at evaluation time by overriding the `coder-vars`
-input:
+The template checks this repository out at **`/etc/nixos`** and builds from
+there, which means the conventional command works with no arguments:
 
 ```console
-nixos-rebuild switch \
-  --flake 'github:coder/nixos-example-flake#workspace-x86_64' \
-  --override-input coder-vars path:/etc/coder/vars \
-  --no-write-lock-file
+sudo nixos-rebuild switch
 ```
 
-`/etc/coder/vars/flake.nix` is written by the template and has the same shape
-as [`vars/flake.nix`](vars/flake.nix). This is an ordinary, pure flake
-mechanism: no `--impure`, and no knowledge of the instance leaks into the
-configuration.
+`nixos-rebuild` finds `/etc/nixos/flake.nix` by itself. The explicit form is
+equivalent:
 
-The input's default is the absolute subflake URL
-`github:coder/nixos-example-flake?dir=vars`, not `path:./vars`. That is
-deliberate: a relative path input cannot always be resolved from a lock file
-(`cannot fetch input 'path:./vars' because it uses a relative path`) and it
-re-resolves on every evaluation, which makes Nix try to rewrite the lock of a
-read-only remote flake on every single rebuild. If you fork this repository,
-point that URL at your own fork -- or at any other trivial flake exposing a
-`coderVars` attribute.
+```console
+sudo nixos-rebuild switch --flake /etc/nixos#workspace-x86_64
+```
 
-The default is never fetched when the template overrides it, so it only
-affects evaluating this flake by hand.
+There are no overrides, no `--impure` and no injected inputs, so what you get
+by hand is exactly what the template applies.
 
-> **Never add a secret to `coder-vars`.** Its contents are copied into
-> `/nix/store`, which is world-readable to every process on the workspace and
-> persists across generations. The agent token is passed at runtime through
-> `/run/coder` (tmpfs, mode 0600) precisely so that it never reaches Nix.
+The checkout is owned by the workspace user, so editing needs no `sudo`. On
+every boot the template syncs it:
+
+| state of `/etc/nixos` | what happens |
+| --- | --- |
+| missing | cloned at the configured ref |
+| clean, on the tracking branch | fast-forwarded to the remote |
+| dirty, or carrying local commits | **left alone**, and built as-is |
+
+So it tracks upstream by default, and the moment you edit it the machine is
+yours until you clean up. A workspace whose configuration silently reverted on
+restart would be worse than one that drifts.
+
+One caveat worth knowing: a flake built from a git checkout ignores
+**untracked** files. If you add a new `.nix` file, `git add` it or the rebuild
+will not see it — this is the single most confusing thing about editing a
+flake in place.
+
+## Per-workspace values
+
+Nothing is injected at evaluation time. Facts about the workspace are written
+to **`/run/coder/workspace.json`** on every boot, for a configuration to read
+at *runtime* if it wants them:
+
+```json
+{
+  "workspace": "my-workspace",
+  "owner": "jdoe",
+  "owner_name": "J Doe",
+  "owner_email": "jdoe@example.com",
+  "access_url": "https://coder.example.com",
+  "hostname": "my-workspace"
+}
+```
+
+Runtime, not evaluation, because a flake cannot read an absolute path outside
+itself in pure evaluation mode — consuming it at eval time would require
+`--impure` and break the by-hand rebuild above. Read it from a systemd service
+or a script instead.
+
+> **Never put a secret there, or anywhere Nix can see.** Anything in the Nix
+> store is world-readable to every process on the workspace and persists
+> across generations. The agent token is passed through `/run/coder/agent.env`
+> at mode 0600 for exactly this reason.
+
+Git identity is not set by this flake: the template supplies it through the
+registry's `git-config` module, which works against any configuration.
+
+## Staging the next generation at shutdown
+
+`modules/coder/stage-on-shutdown.nix` builds the next generation while the
+workspace is powering off, so the next start boots it instead of building it.
+`coder.stageOnShutdown.enable` turns it off; `timeoutSec` bounds it.
+
+It is **best effort and never a correctness mechanism** — the boot path
+rebuilds whenever the configuration changed, so the next boot lands on the
+right generation regardless. Two things make it unusual, and both are
+deliberate:
+
+- The work is in `ExecStop` on a `RemainAfterExit` oneshot, not a unit started
+  at shutdown. Every unit gets an implicit `Conflicts=shutdown.target`, so a
+  unit *started* during shutdown is killed mid-run and `DefaultDependencies`
+  does not save it. systemd does, however, block on `ExecStop`.
+- It is ordered `after` `network.target` and `nix-daemon.service`. Units stop
+  in reverse start order, so this stops *before* they do, while a rebuild can
+  still fetch and build.
+
+Coder itself cannot wait for anything at stop — its agent protocol has no
+shutdown RPC, and the SIGTERM that would trigger a stop script only arrives
+because the stop already happened. So this is a systemd mechanism, not a Coder
+one. EC2 also does not document how long it tolerates a graceful shutdown, so
+`timeoutSec` is an upper bound on our side rather than a promise.
 
 ## Verifying a change before you push
 
-The template rebuilds from a Git reference, so a broken commit is a broken
-workspace. Evaluation catches essentially every module and option error:
+A broken commit is a broken workspace. Evaluation catches essentially every
+module and option error:
 
 ```console
 nix eval --raw .#nixosConfigurations.workspace-x86_64.config.system.build.toplevel.drvPath
 nix eval --raw .#nixosConfigurations.workspace-aarch64.config.system.build.toplevel.drvPath
 nix build .#toplevel            # builds the closure for your native arch
-```
-
-To check how a configuration behaves with particular workspace values, point
-`coder-vars` at a local copy:
-
-```console
-nix eval --json .#nixosConfigurations.workspace-x86_64.config \
-  --override-input coder-vars path:./vars --no-write-lock-file \
-  --apply 'c: { user = c.coder.user; host = c.networking.hostName; }'
 ```
 
 Evaluating both attributes is worth the few seconds: the aarch64 configuration
@@ -113,34 +161,21 @@ nixpkgs independently at boot, which is slow and not reproducible — and a lock
 file that is merely untracked is invisible to a Git flake reference, because
 Nix only sees committed files.
 
-## nixos-facter
+## nixos-facter: considered, not used
 
-The facter modules are upstream in nixpkgs as `hardware.facter.*`, so there is
-no input to add and nothing to enable — `hardware.facter.enable` derives from
-whether a report exists. `hardware/ec2.nix` picks one up automatically if you
-drop it next to that file:
+There is no facter report here on purpose. Facter replaces the driver and
+kernel-module half of `hardware-configuration.nix` — it never generates
+`fileSystems`, `swapDevices` or a bootloader device — and on EC2
+`amazon-image.nix` already covers everything it would contribute: its initrd
+modules are all in nixpkgs' defaults, microcode and firmware are gated on the
+machine being bare metal, and its virtualisation detection reports `amazon`,
+which the nixpkgs module does not match. The measured delta of adding a report
+to this configuration was **zero initrd modules**, against the cost of a
+per-architecture blob that has to be regenerated on a real instance.
 
-```console
-sudo nix-shell -p nixos-facter --run 'nixos-facter -o hardware/facter.json'
-```
-
-No report is shipped, because on EC2 it measurably changes nothing. Facter
-replaces the driver and kernel-module half of `hardware-configuration.nix` —
-it never generates `fileSystems`, `swapDevices` or a bootloader device — and
-`amazon-image.nix` already covers everything it would contribute here: its
-initrd modules are all in nixpkgs' defaults, microcode and firmware are gated
-on the machine being bare metal, and its virtualisation detection reports
-`amazon`, which the nixpkgs module does not match. The measured delta is zero
-initrd modules.
-
-It is wired up anyway because it costs nothing when absent and is the right
-tool the moment this configuration targets hardware that is not EC2.
-
-One consequence is reflected in `flake.nix`: a report sets
-`nixpkgs.hostPlatform` with `mkDefault`, which outranks the value derived from
-`nixosSystem`'s `system` argument. So the platform is pinned explicitly per
-configuration rather than relying on that argument — otherwise an x86_64
-report would silently build an x86_64 closure for the aarch64 attribute.
+The modules are upstream in nixpkgs as `hardware.facter.*`, so if you retarget
+this configuration at hardware that is not EC2, all you need is
+`hardware.facter.reportPath = ./facter.json`.
 
 ## Things that will break the machine
 
@@ -157,9 +192,10 @@ report would silently build an x86_64 closure for the aarch64 attribute.
   relies on stop applying.
 - **Bumping `system.stateVersion`** to something newer than the AMI. It is a
   compatibility marker, not a version to keep current.
-- **Pinning `nixpkgs.hostPlatform` to the wrong value**, or removing it and
-  relying on `nixosSystem`'s `system` argument while a facter report is
-  present. See above.
+- **Removing the explicit `nixpkgs.hostPlatform`** and relying on
+  `nixosSystem`'s `system` argument. Hardware-detection modules can outrank
+  that argument with a `mkDefault` of their own, which silently builds the
+  wrong architecture.
 - **Pinning `coder.uid`** without checking what else claims that UID. The EC2
   images enable `amazon-ssm-agent`, and its `ssm-user` takes the first free
   UID without regard for statically assigned ones -- so pinning the workspace

@@ -82,6 +82,51 @@
       default = "/var/lib/coder-nixos";
     };
 
+    flakeDir = lib.mkOption {
+      description = ''
+        Where the workspace's NixOS configuration is checked out. The template
+        syncs it and builds from it, which is what makes a bare
+        `sudo nixos-rebuild switch` work: nixos-rebuild looks for
+        /etc/nixos/flake.nix on its own.
+      '';
+      type = lib.types.path;
+      default = "/etc/nixos";
+    };
+
+    flakeAttr = lib.mkOption {
+      description = ''
+        The `nixosConfigurations` attribute this machine is built from, used
+        by the shutdown staging hook. Must match what the template applies.
+      '';
+      type = lib.types.str;
+      default = "workspace-x86_64";
+    };
+
+    stageOnShutdown = {
+      enable = lib.mkOption {
+        description = ''
+          Build the next generation during shutdown so the next start boots it
+          rather than building it.
+
+          Best effort, and never a correctness mechanism: the boot path
+          rebuilds whenever the configuration changed. Set false if you would
+          rather no stop was ever delayed.
+        '';
+        type = lib.types.bool;
+        default = true;
+      };
+
+      timeoutSec = lib.mkOption {
+        description = ''
+          How long systemd waits for the staging build. EC2 does not document
+          how long it tolerates a graceful shutdown, so this is an upper bound
+          on our side, not a guarantee.
+        '';
+        type = lib.types.int;
+        default = 300;
+      };
+    };
+
     agent = {
       startTimeoutSec = lib.mkOption {
         description = ''
@@ -104,43 +149,6 @@
         '';
         type = lib.types.listOf lib.types.package;
         default = [ ];
-      };
-    };
-
-    # Values the Coder template injects per workspace. These are passed at
-    # *evaluation* time via `--override-input`, so they end up in the Nix
-    # store and are world-readable. Never put a token or any other secret
-    # here; the agent token is handed over through `runtimeDir` at runtime
-    # instead.
-    workspace = {
-      name = lib.mkOption {
-        description = "Coder workspace name. Empty when built outside Coder.";
-        type = lib.types.str;
-        default = "";
-      };
-
-      owner = lib.mkOption {
-        description = "Username of the workspace owner.";
-        type = lib.types.str;
-        default = "";
-      };
-
-      ownerName = lib.mkOption {
-        description = "Full name of the workspace owner, used for git authorship.";
-        type = lib.types.str;
-        default = "";
-      };
-
-      ownerEmail = lib.mkOption {
-        description = "Email of the workspace owner, used for git authorship.";
-        type = lib.types.str;
-        default = "";
-      };
-
-      accessUrl = lib.mkOption {
-        description = "Base URL of the Coder deployment this workspace belongs to.";
-        type = lib.types.str;
-        default = "";
       };
     };
   };

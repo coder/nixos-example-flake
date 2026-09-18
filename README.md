@@ -208,6 +208,13 @@ this configuration at hardware that is not EC2, all you need is
   `nixosSystem`'s `system` argument. Hardware-detection modules can outrank
   that argument with a `mkDefault` of their own, which silently builds the
   wrong architecture.
+- **Adding `wantedBy = [ "multi-user.target" ]` to `coder-agent.service`.**
+  The unit is started by the workspace boot script, after the rebuild that
+  boot script drives has finished. Let systemd start it instead and, on every
+  boot after the first, the agent connects and runs the workspace's startup
+  scripts against the generation that is about to be replaced -- tools
+  installed into a system with seconds to live, and a workspace reported
+  ready minutes before it is.
 - **Pinning `coder.uid`** without checking what else claims that UID. The EC2
   images enable `amazon-ssm-agent`, and its `ssm-user` takes the first free
   UID without regard for statically assigned ones -- so pinning the workspace
@@ -229,6 +236,11 @@ There is deliberately no automatic rollback in the template: on a fresh
 instance the previous generation is the bare AMI, which has no Coder agent at
 all, so an automatic rollback would trade a visible failure for an
 unreachable workspace.
+
+Note that a generation booted by hand (a GRUB entry, `--rollback` followed by
+a reboot) comes up without an agent, because nothing but the workspace boot
+script starts one. `sudo systemctl start coder-agent` is enough as long as
+`/run/coder` was populated on that boot.
 
 To see what happened on a boot you cannot reach, the AMI logs to the serial
 console:

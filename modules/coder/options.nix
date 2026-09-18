@@ -128,19 +128,6 @@
     };
 
     agent = {
-      startTimeoutSec = lib.mkOption {
-        description = ''
-          How long `coder-agent.service` waits for the template's boot script
-          to publish the token before giving up.
-
-          On every boot but the first, systemd reaches `multi-user.target`
-          (and therefore starts this unit) *before* `amazon-init` re-runs and
-          rewrites the token, so some waiting is unavoidable by design.
-        '';
-        type = lib.types.int;
-        default = 600;
-      };
-
       extraPackages = lib.mkOption {
         description = ''
           Extra packages to place on the agent's `PATH`. Anything a

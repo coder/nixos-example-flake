@@ -33,19 +33,9 @@
 let
   cfg = config.coder;
 
-  # A wrapper rather than `EnvironmentFile` + `Restart=always`.
-  #
-  # `runtimeDir` is a tmpfs, so on every boot this unit starts before
-  # `amazon-init` has re-run and republished the token. With
-  # `EnvironmentFile` systemd would fail the unit outright for a missing
-  # file and we would rely on restart churn to recover; blocking on the
-  # marker turns that race into a short, silent wait.
-  #
-  # Do NOT try to remove the wait by ordering this unit
-  # `After = amazon-init.service`. `nixos-rebuild switch` starts new units
-  # synchronously, `amazon-init` cannot become active until its script
-  # exits, and on first boot that script is the one driving the switch.
-  # That is a boot-time deadlock.
+  # A wrapper rather than `EnvironmentFile`, because the files it reads are
+  # published by the boot script and this unit should say so plainly when
+  # they are missing instead of failing with systemd's generic error.
   startScript = pkgs.writeShellScript "coder-agent-start" ''
     set -eu
 
@@ -53,19 +43,11 @@ let
     env_file=${lib.escapeShellArg "${cfg.runtimeDir}/agent.env"}
     init_script=${lib.escapeShellArg "${cfg.runtimeDir}/init.sh"}
 
-    deadline=$(( $(date +%s) + ${toString cfg.agent.startTimeoutSec} ))
-    while [ ! -f "$ready" ]; do
-      if [ "$(date +%s)" -ge "$deadline" ]; then
-        echo "coder-agent: $ready did not appear within ${toString cfg.agent.startTimeoutSec}s." >&2
-        echo "coder-agent: the workspace boot script writes it; check 'journalctl -u amazon-init'." >&2
-        exit 1
-      fi
-      sleep 1
-    done
-
-    for f in "$env_file" "$init_script"; do
+    for f in "$ready" "$env_file" "$init_script"; do
       if [ ! -f "$f" ]; then
-        echo "coder-agent: $ready exists but $f is missing; refusing to start." >&2
+        echo "coder-agent: $f is missing; refusing to start." >&2
+        echo "coder-agent: the workspace boot script publishes it and then starts" >&2
+        echo "coder-agent: this unit; check 'journalctl -u amazon-init'." >&2
         exit 1
       fi
     done
@@ -108,9 +90,30 @@ lib.mkIf cfg.enable {
   systemd.services.coder-agent = {
     description = "Coder Agent";
     documentation = [ "https://coder.com/docs" ];
-    wantedBy = [ "multi-user.target" ];
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
+
+    # Deliberately not `wantedBy = [ "multi-user.target" ]`. The workspace
+    # boot script starts this unit, and only once the rebuild it drives has
+    # finished.
+    #
+    # Left to systemd, the agent would come up as soon as multi-user.target
+    # is reached -- on the second and later boots that is *before*
+    # `amazon-init` has re-run, fetched the new commit and switched. The
+    # agent would connect, report the workspace ready and run its startup
+    # scripts against the outgoing generation, which then gets swapped out
+    # from under them: tools installed into a system that is about to be
+    # replaced, scripts whose interpreters vanish mid-run, and a workspace
+    # that looks ready minutes before it is.
+    #
+    # Do NOT instead order this unit `After = amazon-init.service`.
+    # `nixos-rebuild switch` starts new units synchronously, `amazon-init`
+    # cannot become active until its script exits, and on the first boot that
+    # script is the one driving the switch. That is a boot-time deadlock.
+    # Being started explicitly has neither problem.
+    #
+    # `Restart = always` still applies once started, so a crashing agent
+    # recovers on its own; it just never starts unattended.
 
     # A `nixos-rebuild switch` triggered by the template's periodic update
     # must not restart the agent: the rebuild is usually being driven by a

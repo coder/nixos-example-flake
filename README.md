@@ -248,3 +248,4 @@ console:
 ```console
 aws ec2 get-console-output --instance-id i-0123456789abcdef0 --output text
 ```
+

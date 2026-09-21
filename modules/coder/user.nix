@@ -1,6 +1,11 @@
 # The workspace user and the bits of the environment that Coder's own
 # tooling depends on. Deliberately does not touch `nix.*` (see coder/options.nix).
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.coder;
 in
@@ -39,6 +44,16 @@ lib.mkIf cfg.enable {
     # Owned by the workspace user so the configuration can be edited without
     # sudo; rebuilding it still needs sudo.
     "d ${cfg.flakeDir} 0755 ${cfg.user} ${cfg.user} -"
+
+    # nix-ld above answers "where is the loader?" for foreign binaries; this
+    # answers "where is the interpreter?" for foreign scripts.
+    #
+    # Coder's registry modules are written for FHS distributions and most of
+    # them begin with `#!/bin/bash`. On NixOS /bin contains only `sh`, so the
+    # kernel fails the exec and the agent reports exit 255 with an empty log
+    # -- there is no output because nothing ever ran. Any workspace that uses
+    # a registry module needs this, so it is not optional here.
+    "L+ /bin/bash - - - - ${pkgs.bash}/bin/bash"
   ];
 
   # Git identity is not set here. It is per-user, per-workspace state that

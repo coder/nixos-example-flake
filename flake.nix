@@ -12,8 +12,8 @@
       ];
 
       # The attribute name is what the `#` in a flake reference selects:
-      #   nixos-rebuild switch --flake /etc/nixos#workspace-x86_64
-      attrFor = system: "workspace-${nixpkgs.lib.head (nixpkgs.lib.splitString "-" system)}";
+      #   nixos-rebuild switch --flake /etc/nixos#coder-workspace-x86_64
+      attrFor = system: "coder-workspace-${nixpkgs.lib.head (nixpkgs.lib.splitString "-" system)}";
 
       mkWorkspace =
         system:
@@ -47,7 +47,7 @@
       # module and option errors without needing a cross builder:
       #
       #   nix eval --raw \
-      #     .#nixosConfigurations.workspace-aarch64.config.system.build.toplevel.drvPath
+      #     .#nixosConfigurations.coder-workspace-aarch64.config.system.build.toplevel.drvPath
       packages = nixpkgs.lib.genAttrs systems (
         system:
         let

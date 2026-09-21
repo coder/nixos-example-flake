@@ -4,7 +4,7 @@ A reference NixOS configuration for Coder workspaces on AWS EC2, consumed by the
 [`aws-nixos`](https://registry.coder.com/templates/coder/aws-nixos) template.
 
 The template treats this repository as **foreign code**. It clones it to `/etc/nixos` and runs a
-plain `nixos-rebuild switch --flake /etc/nixos#workspace-<arch>` — no `--override-input`, no
+plain `nixos-rebuild switch --flake /etc/nixos#coder-workspace-<arch>` — no `--override-input`, no
 `--impure`, no injected inputs, no evaluation-time knowledge of the workspace. Anything that would
 break that contract belongs in the template or in a runtime file, not here.
 
@@ -15,7 +15,7 @@ changing it.
 
 | Path | Purpose |
 | --- | --- |
-| `flake.nix` | Two configurations, `workspace-x86_64` and `workspace-aarch64`. Only input is nixpkgs. |
+| `flake.nix` | Two configurations, `coder-workspace-x86_64` and `coder-workspace-aarch64`. Only input is nixpkgs. |
 | `configuration.nix` | The machine. Ordinary NixOS, zero `coder.*` references. This is the file a user edits. |
 | `hardware/ec2.nix` | Imports `amazon-image.nix`, and nothing else. |
 | `modules/coder/options.nix` | Every `coder.*` option. |
@@ -30,8 +30,8 @@ Evaluate **both** architectures before pushing — this catches essentially ever
 error without needing a builder for the other arch:
 
 ```console
-nix eval --raw .#nixosConfigurations.workspace-x86_64.config.system.build.toplevel.drvPath
-nix eval --raw .#nixosConfigurations.workspace-aarch64.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.coder-workspace-x86_64.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.coder-workspace-aarch64.config.system.build.toplevel.drvPath
 ```
 
 Both must be silent. A `warning: Git tree is dirty` is fine locally; a lock-file warning is not —

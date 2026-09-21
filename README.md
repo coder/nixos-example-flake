@@ -39,14 +39,14 @@ modules = [ inputs.coder.nixosModules.default ./configuration.nix ];
 The attribute after `#` in the flake reference selects it:
 
 ```console
-nixos-rebuild switch --flake 'github:coder/nixos-example-flake#workspace-x86_64'
+nixos-rebuild switch --flake 'github:coder/nixos-example-flake#coder-workspace-x86_64'
 ```
 
-This repository ships `workspace-x86_64` and `workspace-aarch64`. The template
+This repository ships `coder-workspace-x86_64` and `coder-workspace-aarch64`. The template
 derives the name from the chosen EC2 instance type, so the AMI architecture,
 `coder_agent.arch` and the attribute always agree. Add your own entries to
 `nixosConfigurations` and point the template's `flake_attr` variable at them —
-it accepts an `$ARCH` placeholder (`workspace-$ARCH`) if you keep the
+it accepts an `$ARCH` placeholder (`coder-workspace-$ARCH`) if you keep the
 per-architecture split, or a fixed name if you do not.
 
 ## Where the configuration lives on the workspace
@@ -62,7 +62,7 @@ sudo nixos-rebuild switch
 equivalent:
 
 ```console
-sudo nixos-rebuild switch --flake /etc/nixos#workspace-x86_64
+sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-x86_64
 ```
 
 There are no overrides, no `--impure` and no injected inputs, so what you get
@@ -159,8 +159,8 @@ A broken commit is a broken workspace. Evaluation catches essentially every
 module and option error:
 
 ```console
-nix eval --raw .#nixosConfigurations.workspace-x86_64.config.system.build.toplevel.drvPath
-nix eval --raw .#nixosConfigurations.workspace-aarch64.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.coder-workspace-x86_64.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.coder-workspace-aarch64.config.system.build.toplevel.drvPath
 nix build .#toplevel            # builds the closure for your native arch
 ```
 

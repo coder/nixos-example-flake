@@ -99,7 +99,7 @@
         by the shutdown staging hook. Must match what the template applies.
       '';
       type = lib.types.str;
-      default = "workspace-x86_64";
+      default = "coder-workspace-x86_64";
     };
 
     stageOnShutdown = {

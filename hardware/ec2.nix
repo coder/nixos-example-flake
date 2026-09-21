@@ -25,4 +25,10 @@
   # only changes on reboot. `boot.kernelModules` is for runtime additions;
   # `availableKernelModules` is the platform's business.
   boot.kernelModules = [ ];
+
+  # On EC2 the boot-time rebuild runs inside amazon-init. A timer that fires
+  # while that is still going would be a second `nixos-rebuild` against the
+  # same profile, so order it behind. Safe in this direction only: nothing in
+  # amazon-init waits for the upgrade, so there is no cycle.
+  coder.autoUpgrade.afterUnits = [ "amazon-init.service" ];
 }

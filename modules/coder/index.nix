@@ -16,6 +16,7 @@
     ./options.nix
     ./agent.nix
     ./user.nix
+    ./auto-upgrade.nix
     ./stage-on-shutdown.nix
   ];
 }

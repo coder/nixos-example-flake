@@ -102,6 +102,76 @@
       default = "coder-workspace-x86_64";
     };
 
+    autoUpgrade = {
+      enable = lib.mkOption {
+        description = ''
+          Rebuild this machine from `flakeDir` on a timer, using NixOS's own
+          `system.autoUpgrade`.
+
+          The schedule is part of the configuration, not of whatever created
+          the workspace: a systemd timer is decided at evaluation time, and
+          nothing here is read back out of the runtime directory.
+        '';
+        type = lib.types.bool;
+        default = true;
+      };
+
+      dates = lib.mkOption {
+        description = ''
+          When to upgrade, as a systemd `OnCalendar` expression -- *not* cron.
+          `systemd-analyze calendar '<expr>'` will tell you what it means.
+        '';
+        type = lib.types.str;
+        default = "04:40";
+      };
+
+      operation = lib.mkOption {
+        description = ''
+          `boot` stages the new generation for the next restart; `switch`
+          applies it immediately.
+
+          `boot` is the default because a workspace is a machine someone is
+          working on: activating a new generation under a running session can
+          restart services out from under it.
+        '';
+        type = lib.types.enum [
+          "boot"
+          "switch"
+        ];
+        default = "boot";
+      };
+
+      randomizedDelaySec = lib.mkOption {
+        description = ''
+          Jitter added to the timer, so a fleet of workspaces sharing a
+          schedule does not hit the binary cache in lockstep.
+        '';
+        type = lib.types.str;
+        default = "30min";
+      };
+
+      printBuildLogs = lib.mkOption {
+        description = ''
+          Pass `--print-build-logs` to `nixos-rebuild`.
+
+          Off by default: without it, and with no TTY, nix emits condensed
+          progress rather than every builder line, which is what you want when
+          the journal is being streamed somewhere with a byte budget.
+        '';
+        type = lib.types.bool;
+        default = false;
+      };
+
+      afterUnits = lib.mkOption {
+        description = ''
+          Units the upgrade must not start before. A platform module uses this
+          to serialise the timer against its own boot-time rebuild.
+        '';
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+      };
+    };
+
     stageOnShutdown = {
       enable = lib.mkOption {
         description = ''

@@ -131,7 +131,7 @@ coder.autoUpgrade = {
 `boot` is the default because someone is working on this machine: activating a
 generation under a live session restarts whatever changed underneath it.
 
-Three things upstream does not do, which this module adds:
+Two things upstream does not do, which this module adds:
 
 - **It syncs first.** `system.autoUpgrade` never fetches anything — `--refresh`
   only busts nix's evaluation cache for *remote* references, so a local
@@ -143,11 +143,6 @@ Three things upstream does not do, which this module adds:
   holds `${coder.stateDir}/rebuild.lock`, and `coder.autoUpgrade.afterUnits`
   lets a platform module order the timer behind its own boot-time rebuild —
   `hardware/ec2.nix` sets it to `amazon-init.service`.
-- **It streams.** `coder-stream-nixos-upgrade-logs.service` is pulled in by the
-  upgrade, ordered ahead of it and bound to it, and follows
-  `journalctl -u nixos-upgrade` into the workspace UI. It is skipped entirely
-  (`ConditionPathExists`) on a machine with no Coder runtime directory, so the
-  flake still works on its own.
 
 `persistent = false`, deliberately: a run missed while the workspace was stopped
 is not made up on the next boot, because booting already rebuilds from the

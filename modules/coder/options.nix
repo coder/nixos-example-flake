@@ -155,8 +155,8 @@
           Pass `--print-build-logs` to `nixos-rebuild`.
 
           Off by default: without it, and with no TTY, nix emits condensed
-          progress rather than every builder line, which is what you want when
-          the journal is being streamed somewhere with a byte budget.
+          progress rather than every builder line, which is usually what you
+          want in the journal. Turn it on to debug a build that fails there.
         '';
         type = lib.types.bool;
         default = false;

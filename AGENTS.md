@@ -21,7 +21,7 @@ changing it.
 | `modules/coder/options.nix` | Every `coder.*` option. |
 | `modules/coder/agent.nix` | `coder-agent.service` and the `coder` CLI wrapper. |
 | `modules/coder/user.nix` | Workspace user, sudo, nix-ld, tmpfiles, `/etc/gitconfig`. |
-| `modules/coder/auto-upgrade.nix` | `system.autoUpgrade` on a timer, plus the log streamer. |
+| `modules/coder/auto-upgrade.nix` | `system.autoUpgrade` on a timer. |
 | `modules/coder/stage-on-shutdown.nix` | Builds the next generation during shutdown. |
 
 ## Verifying a change

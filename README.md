@@ -118,46 +118,15 @@ registry's `git-config` module, which works against any configuration.
 
 ## Keeping the machine current
 
-`modules/coder/auto-upgrade.nix` turns on NixOS's own `system.autoUpgrade` with
-defaults that suit a workspace, under `coder.autoUpgrade`:
+There is no timer. A workspace rebuilds from this flake when it boots, so
+picking up a change means restarting the workspace — or running
+`sudo nixos-rebuild switch` inside it.
 
-```nix
-coder.autoUpgrade = {
-  dates     = "04:40";   # systemd OnCalendar, not cron
-  operation = "boot";    # stage for the next restart; "switch" applies now
-};
-```
-
-`boot` is the default because someone is working on this machine: activating a
-generation under a live session restarts whatever changed underneath it.
-
-Two things upstream does not do, which this module adds:
-
-- **It syncs first.** `system.autoUpgrade` never fetches anything — `--refresh`
-  only busts nix's evaluation cache for *remote* references, so a local
-  checkout that is behind its remote would rebuild unchanged forever. An
-  `ExecStartPre` fast-forwards `coder.flakeDir` with the same policy as every
-  other rebuild here: a dirty tree or local commits are built as they are.
-- **It takes the lock.** `Type=oneshot` prevents a second copy of the *same*
-  unit and nothing else; `nixos-rebuild` itself takes no lock at all. The sync
-  holds `${coder.stateDir}/rebuild.lock`, and `coder.autoUpgrade.afterUnits`
-  lets a platform module order the timer behind its own boot-time rebuild —
-  `hardware/ec2.nix` sets it to `amazon-init.service`.
-
-`persistent = false`, deliberately: a run missed while the workspace was stopped
-is not made up on the next boot, because booting already rebuilds from the
-checkout.
-
-Two upstream details worth knowing before you change any of this:
-
-- `system.autoUpgrade.flags` is *defined by the upstream module*, so anything
-  you set is **concatenated** with `[ "--refresh" "--flake <uri>" ]` rather
-  than replacing it. Setting `--flake` yourself passes it twice.
-- `--upgrade` is added in flake mode too, where it does nothing but log that it
-  does nothing. `upgrade = false` removes it.
-
-Run one now with `systemctl start nixos-upgrade`; see the next one with
-`systemctl list-timers nixos-upgrade`.
+If you want a schedule, `system.autoUpgrade` is upstream's and belongs in
+`configuration.nix`, where the machine's owner can see it. Order it behind
+whatever does the boot-time rebuild (`amazon-init.service` on EC2) and have it
+sync `/etc/nixos` first: `--refresh` does nothing for a local path flake, so a
+checkout that is behind its remote would rebuild unchanged forever.
 
 ## Staging the next generation at shutdown
 

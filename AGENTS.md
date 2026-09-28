@@ -21,7 +21,6 @@ changing it.
 | `modules/coder/options.nix` | Every `coder.*` option. |
 | `modules/coder/agent.nix` | `coder-agent.service` and the `coder` CLI wrapper. |
 | `modules/coder/user.nix` | Workspace user, sudo, nix-ld, tmpfiles, `/etc/gitconfig`. |
-| `modules/coder/auto-upgrade.nix` | `system.autoUpgrade` on a timer. |
 | `modules/coder/stage-on-shutdown.nix` | Builds the next generation during shutdown. |
 
 ## Verifying a change
@@ -66,21 +65,13 @@ These are not style preferences. Each one is a bug that has already happened.
    It must not call `nixos-rebuild boot`, which wraps `switch-to-configuration` in `systemd-run` —
    starting a unit is refused once `shutdown.target` is queued, and the generation silently never
    becomes the boot default.
-7. **`restartIfChanged` and `stopIfChanged` are `false` on `coder-agent`.** A periodic rebuild is
-   usually driven by a `coder_script` the agent is running; restarting it mid-rebuild kills the
-   script and its log stream.
+7. **`restartIfChanged` and `stopIfChanged` are `false` on `coder-agent`.** A rebuild is usually driven by a
+   script the agent is running; restarting it mid-rebuild kills the script and its log stream.
 8. **Keep the `amazon-image.nix` import, keep `nixpkgs.hostPlatform` explicit, and do not set
    `boot.loader.*`.** Each produces a switch that succeeds and a machine that never boots again.
 9. **Do not add `/bin/bash`.** NixOS has `/bin/sh` only. Scripts that assume otherwise get fixed at
    the source; a compatibility symlink here hides the problem from everyone else.
-10. **`system.autoUpgrade.flags` concatenates, and `upgrade = false` stays.**
-    Upstream defines `flags` in its own `config` section, so a value set here
-    is appended to `[ "--refresh" "--flake <uri>" ]`, not substituted for it —
-    passing `--flake` again is the obvious trap. `--upgrade` is added in flake
-    mode where it does nothing but log a warning, and `persistent = false`
-    keeps a timer missed while the workspace was stopped from rebuilding
-    minutes after boot has already rebuilt.
-11. **`system.stateVersion` tracks the AMI's release**, not the newest one. It is a compatibility
+10. **`system.stateVersion` tracks the AMI's release**, not the newest one. It is a compatibility
     marker, not a version to keep current.
 
 ## Debugging on a workspace

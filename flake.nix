@@ -1,75 +1,66 @@
 {
   description = "Example NixOS configuration for Coder workspaces on AWS EC2";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-
-  # The Coder integration itself: the agent unit, the workspace user and the
-  # shutdown staging hook. It has no inputs of its own, so there is nothing to
-  # make `follows` nixpkgs -- the modules use whatever nixpkgs builds them.
-  inputs.coder-modules.url = "github:coder/nixos-modules";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    # The agent, the workspace user and the shutdown hook. It has no inputs of
+    # its own, so there is nothing to make `follows` nixpkgs.
+    coder-modules.url = "github:coder/nixos-modules";
+  };
 
   outputs =
-    { self, nixpkgs, coder-modules }:
+    {
+      self,
+      nixpkgs,
+      coder-modules,
+    }:
     let
+      inherit (nixpkgs) lib;
+
       systems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
 
-      # The attribute name is what the `#` in a flake reference selects:
-      #   nixos-rebuild switch --flake /etc/nixos#coder-workspace-x86_64
-      attrFor = system: "coder-workspace-${nixpkgs.lib.head (nixpkgs.lib.splitString "-" system)}";
+      # What the `#` in a flake reference selects, e.g.
+      #   nixos-rebuild switch --flake /etc/nixos#coder-workspace-ec2-x86_64
+      # One per architecture, because a NixOS configuration is built for a
+      # fixed platform; "ec2" because hardware/ec2.nix is in all of them.
+      nameFor = system: "coder-workspace-ec2-${lib.head (lib.splitString "-" system)}";
 
-      mkWorkspace =
+      workspaceFor =
         system:
-        nixpkgs.lib.nixosSystem {
+        lib.nixosSystem {
           modules = [
             ./hardware/ec2.nix
             ./configuration.nix
             coder-modules.nixosModules.default
             {
-              # Set here rather than through nixosSystem's `system` argument,
-              # which some hardware-detection modules can outrank with a
-              # mkDefault of their own.
+              # Not nixosSystem's `system` argument, which a hardware module
+              # can outrank with an mkDefault of its own.
               nixpkgs.hostPlatform = system;
-              # So the shutdown staging hook rebuilds the same attribute this
-              # machine was built from, without the template telling it.
-              coder.flakeAttr = attrFor system;
+              coder.flakeAttr = nameFor system;
             }
           ];
         };
+
+      toplevelFor = system: self.nixosConfigurations.${nameFor system}.config.system.build.toplevel;
     in
     {
-      nixosConfigurations = nixpkgs.lib.listToAttrs (
-        map (system: {
-          name = attrFor system;
-          value = mkWorkspace system;
-        }) systems
+      nixosConfigurations = lib.listToAttrs (
+        map (system: lib.nameValuePair (nameFor system) (workspaceFor system)) systems
       );
 
-      # `nix build .#toplevel` builds the closure for the machine you are on.
-      # The other architecture is verified by evaluation instead, which catches
-      # module and option errors without needing a cross builder:
-      #
-      #   nix eval --raw \
-      #     .#nixosConfigurations.coder-workspace-aarch64.config.system.build.toplevel.drvPath
-      packages = nixpkgs.lib.genAttrs systems (
-        system:
-        let
-          toplevel = self.nixosConfigurations.${attrFor system}.config.system.build.toplevel;
-        in
-        {
-          inherit toplevel;
-          default = toplevel;
-        }
-      );
+      packages = lib.genAttrs systems (system: {
+        toplevel = toplevelFor system;
+        default = toplevelFor system;
+      });
 
-      # Re-exported so a configuration that starts from this example keeps
-      # working after the modules moved out of it.
+      # Re-exported so a configuration that started from this example keeps
+      # working now that the modules live in their own flake.
       nixosModules = {
-        coder = coder-modules.nixosModules.coder;
+        inherit (coder-modules.nixosModules) coder default;
         ec2 = ./hardware/ec2.nix;
-        default = coder-modules.nixosModules.default;
       };
     };
 }

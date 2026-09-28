@@ -44,14 +44,14 @@ already was, but an instance behind a restrictive egress policy now needs
 The attribute after `#` in the flake reference selects it:
 
 ```console
-nixos-rebuild switch --flake 'github:coder/nixos-example-flake#coder-workspace-x86_64'
+nixos-rebuild switch --flake 'github:coder/nixos-example-flake#coder-workspace-ec2-x86_64'
 ```
 
-This repository ships `coder-workspace-x86_64` and `coder-workspace-aarch64`. The template
+This repository ships `coder-workspace-ec2-x86_64` and `coder-workspace-ec2-aarch64`. The template
 derives the name from the chosen EC2 instance type, so the AMI architecture,
 `coder_agent.arch` and the attribute always agree. Add your own entries to
 `nixosConfigurations` and point the template's `flake_attr` variable at them —
-it accepts an `$ARCH` placeholder (`coder-workspace-$ARCH`) if you keep the
+it accepts an `$ARCH` placeholder (`coder-workspace-ec2-$ARCH`) if you keep the
 per-architecture split, or a fixed name if you do not.
 
 ## Where the configuration lives on the workspace
@@ -60,13 +60,13 @@ The template checks this repository out at **`/etc/nixos`** and builds from
 there, so rebuilding by hand is the ordinary command:
 
 ```console
-sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-x86_64
+sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-ec2-x86_64
 ```
 
 The attribute has to be named. `nixos-rebuild` finds `/etc/nixos/flake.nix` on
 its own, but with no `#` it looks for a configuration named after the
 machine's hostname — which on EC2 is whatever DHCP handed out, not
-`coder-workspace-x86_64`. A bare `sudo nixos-rebuild switch` therefore fails
+`coder-workspace-ec2-x86_64`. A bare `sudo nixos-rebuild switch` therefore fails
 with `does not provide attribute ... ip-172-31-2-88.eu-west-3.compute.internal`.
 
 There are no overrides, no `--impure` and no injected inputs, so what you get
@@ -131,7 +131,7 @@ registry's `git-config` module, which works against any configuration.
 
 There is no timer. A workspace rebuilds from this flake when it boots, so
 picking up a change means restarting the workspace — or running
-`sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-x86_64` inside
+`sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-ec2-x86_64` inside
 it.
 
 If you want a schedule, `system.autoUpgrade` is upstream's and belongs in
@@ -155,8 +155,8 @@ A broken commit is a broken workspace. Evaluation catches essentially every
 module and option error:
 
 ```console
-nix eval --raw .#nixosConfigurations.coder-workspace-x86_64.config.system.build.toplevel.drvPath
-nix eval --raw .#nixosConfigurations.coder-workspace-aarch64.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.coder-workspace-ec2-x86_64.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.coder-workspace-ec2-aarch64.config.system.build.toplevel.drvPath
 nix build .#toplevel            # builds the closure for your native arch
 ```
 

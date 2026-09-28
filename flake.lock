@@ -2,11 +2,11 @@
   "nodes": {
     "coder-modules": {
       "locked": {
-        "lastModified": 1790603674,
-        "narHash": "sha256-ctTF50EUe2f7hx/FIBrYu6eaB3Zsj2Dt2Q+fVg4TPok=",
+        "lastModified": 1790621011,
+        "narHash": "sha256-hJsE6btL+ebrL3kh+Mom4Iq/W2moBtJ09LV6yggQSyg=",
         "owner": "coder",
         "repo": "nixos-modules",
-        "rev": "299fb40145b1316d4948072eb6c649f4899614e9",
+        "rev": "ac5ee4af1543c8fb7a82f68dd035dd52787a5c00",
         "type": "github"
       },
       "original": {

@@ -1,5 +1,20 @@
 {
   "nodes": {
+    "coder-modules": {
+      "locked": {
+        "lastModified": 1790603674,
+        "narHash": "sha256-ctTF50EUe2f7hx/FIBrYu6eaB3Zsj2Dt2Q+fVg4TPok=",
+        "owner": "coder",
+        "repo": "nixos-modules",
+        "rev": "299fb40145b1316d4948072eb6c649f4899614e9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "coder",
+        "repo": "nixos-modules",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1789542786,
@@ -18,6 +33,7 @@
     },
     "root": {
       "inputs": {
+        "coder-modules": "coder-modules",
         "nixpkgs": "nixpkgs"
       }
     }

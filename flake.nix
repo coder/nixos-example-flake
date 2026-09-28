@@ -3,8 +3,13 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
+  # The Coder integration itself: the agent unit, the workspace user and the
+  # shutdown staging hook. It has no inputs of its own, so there is nothing to
+  # make `follows` nixpkgs -- the modules use whatever nixpkgs builds them.
+  inputs.coder-modules.url = "github:coder/nixos-modules";
+
   outputs =
-    { self, nixpkgs }:
+    { self, nixpkgs, coder-modules }:
     let
       systems = [
         "x86_64-linux"
@@ -21,7 +26,7 @@
           modules = [
             ./hardware/ec2.nix
             ./configuration.nix
-            ./modules/coder/index.nix
+            coder-modules.nixosModules.default
             {
               # Set here rather than through nixosSystem's `system` argument,
               # which some hardware-detection modules can outrank with a
@@ -59,10 +64,12 @@
         }
       );
 
+      # Re-exported so a configuration that starts from this example keeps
+      # working after the modules moved out of it.
       nixosModules = {
-        coder = ./modules/coder/index.nix;
+        coder = coder-modules.nixosModules.coder;
         ec2 = ./hardware/ec2.nix;
-        default = ./modules/coder/index.nix;
+        default = coder-modules.nixosModules.default;
       };
     };
 }

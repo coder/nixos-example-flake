@@ -15,24 +15,29 @@ settings — is decided here, not in the template.
 | `flake.nix` | you | inputs and the per-architecture `nixosConfigurations` |
 | `configuration.nix` | **you** | the environment: packages, `nix.*`, swap, timezone |
 | `hardware/ec2.nix` | platform | imports `amazon-image.nix` |
-| `modules/coder/index.nix` | Coder | the single import that wires the agent in |
-| `modules/coder/options.nix` | Coder | `options.coder.*` |
-| `modules/coder/agent.nix` | Coder | the `coder-agent.service` unit and `coder` on PATH |
-| `modules/coder/user.nix` | Coder | workspace user, sudo, `nix-ld` |
-| `modules/coder/stage-on-shutdown.nix` | Coder | builds the next generation at shutdown |
+| `coder-modules` input | Coder | the agent unit, the workspace user, shutdown staging |
 
-`flake.nix` and `configuration.nix` contain no Coder-specific settings: the
-integration is one import, and `configuration.nix` does not mention `coder.*`
-at all. There are no injected evaluation inputs, so this flake builds
-identically by hand and under the template. `modules/coder/` is self-contained
-and is intended to move to its own flake (`github:coder/nixos-coder`). When it
-does, adopting it in an existing configuration is a two-line change:
+The Coder integration is not in this repository. It lives in
+[coder/nixos-modules](https://github.com/coder/nixos-modules) and arrives as
+one input and one import — which is all adopting it in a configuration of your
+own takes:
 
 ```nix
-inputs.coder.url = "github:coder/nixos-coder";
+inputs.coder-modules.url = "github:coder/nixos-modules";
 # ...
-modules = [ inputs.coder.nixosModules.default ./configuration.nix ];
+modules = [ coder-modules.nixosModules.default ./configuration.nix ];
 ```
+
+That repository's README documents every `coder.*` option, the agent handoff
+and the shutdown hook. `flake.nix` and `configuration.nix` contain no
+Coder-specific settings beyond the import and `coder.flakeAttr`, and there are
+no injected evaluation inputs, so this flake builds identically by hand and
+under the template.
+
+One consequence worth knowing: a workspace resolves two flake inputs at boot
+instead of one. Both are pinned in `flake.lock` and fetched exactly as nixpkgs
+already was, but an instance behind a restrictive egress policy now needs
+`github.com/coder/nixos-modules` reachable as well.
 
 ## Which configuration gets applied
 
@@ -88,23 +93,10 @@ flake in place.
 
 ## The workspace user
 
-The agent runs as `coder.user.name` — `coder` by default — and this flake
-declares the account: a normal user, its own group, `wheel` for passwordless
-`sudo nixos-rebuild`, and a home directory the editors land in.
-
-```nix
-coder.user = {
-  name = "coder";
-  create = true; # false if the account is yours to declare
-};
-```
-
-With `create = false` nothing is asserted about the user, the group or the
-home directory, and `uid` and `extraGroups` stop meaning anything — you own
-all of it, including putting the account in `wheel`, without which every
-rebuild fails. The rest still works: the agent runs as that name and
-`/etc/nixos` is chowned to it and to whatever its primary group turns out to
-be.
+The agent runs as `coder.user.name` — `coder` by default — and the modules
+declare the account, including `wheel` for passwordless `sudo nixos-rebuild`.
+Set `coder.user.create = false` if the account is yours to declare instead;
+see [coder/nixos-modules](https://github.com/coder/nixos-modules#the-workspace-user).
 
 ## Per-workspace values
 
@@ -150,40 +142,12 @@ checkout that is behind its remote would rebuild unchanged forever.
 
 ## Staging the next generation at shutdown
 
-`modules/coder/stage-on-shutdown.nix` builds the next generation while the
-workspace is powering off, so the next start boots it instead of building it.
-`coder.stageOnShutdown.enable` turns it off; `timeoutSec` bounds it.
-
-It is **best effort and never a correctness mechanism** — the boot path
-rebuilds whenever the configuration changed, so the next boot lands on the
-right generation regardless. Two things make it unusual, and both are
-deliberate:
-
-- The work is in `ExecStop` on a `RemainAfterExit` oneshot, not a unit started
-  at shutdown. Every unit gets an implicit `Conflicts=shutdown.target`, so a
-  unit *started* during shutdown is killed mid-run and `DefaultDependencies`
-  does not save it. systemd does, however, block on `ExecStop`.
-- It is ordered `after` `network.target` and `nix-daemon.service`. Units stop
-  in reverse start order, so this stops *before* they do, while a rebuild can
-  still fetch and build.
-- It does not call `nixos-rebuild boot`. `nixos-rebuild` runs
-  `switch-to-configuration` inside a transient `systemd-run` unit, and starting
-  any unit once `shutdown.target` is queued is refused as a destructive
-  transaction — the build would succeed and the generation would silently never
-  become the boot default. The script therefore does the three steps `boot`
-  means itself: build the toplevel, point the system profile at it, and run
-  `switch-to-configuration boot` directly.
-
-Coder itself cannot wait for anything at stop — its agent protocol has no
-shutdown RPC, and the SIGTERM that would trigger a stop script only arrives
-because the stop already happened. So this is a systemd mechanism, not a Coder
-one. EC2 also does not document how long it tolerates a graceful shutdown, so
-`timeoutSec` is an upper bound on our side rather than a promise. Measured on a
-`t3.medium` in `eu-west-3`: a stop that staged a small generation took 93s end
-to end, against 99s for a stop with nothing to do — the staging is lost in the
-noise of the stop itself. When the checkout is clean, unchanged since the last
-rebuild and already activated, the unit exits in milliseconds without touching
-Nix at all, so an ordinary stop is never slower for it.
+A stop builds the next generation before it finishes, so the next start boots
+it rather than building it — best effort, never a correctness mechanism, since
+the boot path rebuilds whenever the configuration changed anyway.
+`coder.stageOnShutdown.enable` turns it off. How it manages to run work during
+shutdown at all is documented in
+[coder/nixos-modules](https://github.com/coder/nixos-modules#staging-the-next-generation-at-shutdown).
 
 ## Verifying a change before you push
 

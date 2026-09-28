@@ -67,7 +67,7 @@ let
   # stable to point at.
   binDir = "${cfg.runtimeDir}/bin";
 in
-lib.mkIf cfg.enable {
+lib.mkIf (cfg.enable && cfg.agent.enable) {
   # `coder stat`, which the template'"'"'s metadata scripts call, has to be
   # reachable from an ordinary login shell.
   #

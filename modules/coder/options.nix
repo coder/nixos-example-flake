@@ -11,7 +11,7 @@
 {
   options.coder = {
     enable = lib.mkOption {
-      description = "Whether to declare the Coder agent and workspace user.";
+      description = "Whether this machine is a Coder workspace at all. False declares none of it.";
       type = lib.types.bool;
       default = true;
     };
@@ -148,6 +148,20 @@
     };
 
     agent = {
+      enable = lib.mkOption {
+        description = ''
+          Declare `coder-agent.service` and the `coder` CLI wrapper.
+
+          Set it false to run the agent some other way -- a container, or a
+          unit of your own. Nothing else in this module changes: the workspace
+          user, the runtime directory and the shutdown staging are all still
+          declared, because they are what the agent finds rather than part of
+          it.
+        '';
+        type = lib.types.bool;
+        default = true;
+      };
+
       extraPackages = lib.mkOption {
         description = ''
           Extra packages to place on the agent's `PATH`. Anything a

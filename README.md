@@ -57,18 +57,17 @@ per-architecture split, or a fixed name if you do not.
 ## Where the configuration lives on the workspace
 
 The template checks this repository out at **`/etc/nixos`** and builds from
-there, which means the conventional command works with no arguments:
-
-```console
-sudo nixos-rebuild switch
-```
-
-`nixos-rebuild` finds `/etc/nixos/flake.nix` by itself. The explicit form is
-equivalent:
+there, so rebuilding by hand is the ordinary command:
 
 ```console
 sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-x86_64
 ```
+
+The attribute has to be named. `nixos-rebuild` finds `/etc/nixos/flake.nix` on
+its own, but with no `#` it looks for a configuration named after the
+machine's hostname — which on EC2 is whatever DHCP handed out, not
+`coder-workspace-x86_64`. A bare `sudo nixos-rebuild switch` therefore fails
+with `does not provide attribute ... ip-172-31-2-88.eu-west-3.compute.internal`.
 
 There are no overrides, no `--impure` and no injected inputs, so what you get
 by hand is exactly what the template applies.
@@ -132,7 +131,8 @@ registry's `git-config` module, which works against any configuration.
 
 There is no timer. A workspace rebuilds from this flake when it boots, so
 picking up a change means restarting the workspace — or running
-`sudo nixos-rebuild switch` inside it.
+`sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-x86_64` inside
+it.
 
 If you want a schedule, `system.autoUpgrade` is upstream's and belongs in
 `configuration.nix`, where the machine's owner can see it. Order it behind

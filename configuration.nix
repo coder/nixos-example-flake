@@ -1,7 +1,7 @@
 # The machine configuration: this is the file you edit.
 #
 # An ordinary NixOS configuration with no knowledge of Coder. The workspace
-# integration is a separate import (modules/coder/index.nix), and all `nix.*`
+# integration is a separate import (the `coder-modules` input), and all `nix.*`
 # settings live here deliberately -- Nix configuration is the machine owner's
 # business and the Coder module never touches it.
 { pkgs, ... }:

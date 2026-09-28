@@ -147,8 +147,12 @@ lib.mkIf cfg.enable {
 
     serviceConfig = {
       Type = "simple";
-      User = cfg.user;
-      Group = cfg.user;
+      User = cfg.user.name;
+      # Not cfg.user.name again: with `coder.user.create = false` the account
+      # is declared elsewhere and its primary group may be anything, and a
+      # Group= that does not exist fails the unit at start rather than at
+      # evaluation.
+      Group = config.users.users.${cfg.user.name}.group or cfg.user.name;
       ExecStart = startScript;
       Restart = "always";
       RestartSec = 5;

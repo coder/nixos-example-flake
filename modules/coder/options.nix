@@ -16,44 +16,64 @@
       default = true;
     };
 
-    user = lib.mkOption {
-      description = ''
-        Username of the workspace user. The Coder agent runs as this user and
-        it owns the home directory that editors and terminals land in.
-      '';
-      type = lib.types.str;
-      default = "coder";
+    user = {
+      name = lib.mkOption {
+        description = ''
+          Username of the workspace user. The Coder agent runs as this user and
+          it owns the home directory that editors and terminals land in.
+        '';
+        type = lib.types.str;
+        default = "coder";
+      };
+
+      create = lib.mkOption {
+        description = ''
+          Declare the account. Set it false to declare `users.users.<name>`
+          yourself, when the workspace user is not this module's to invent --
+          an account that comes from LDAP, or one with a home volume and an
+          established uid.
+
+          Everything else keeps working either way: the agent still runs as
+          `coder.user.name`, `/etc/nixos` is still chowned to it, and sudo is
+          still passwordless for `wheel`. What this module stops doing is
+          asserting the user, the group and the home directory -- so with it
+          off, `coder.user.uid` and `coder.user.extraGroups` do nothing, and
+          putting the user in `wheel` becomes your job. The agent runs
+          `nixos-rebuild` through sudo; without `wheel` a rebuild fails.
+        '';
+        type = lib.types.bool;
+        default = true;
+      };
+
+      uid = lib.mkOption {
+        description = ''
+          UID for the workspace user, or null to let NixOS allocate one.
+
+          Null by default because a pinned UID collides in practice: the EC2
+          images enable `amazon-ssm-agent`, whose `ssm-user` is allocated the
+          first free UID (1000) without regard for statically assigned ones,
+          so pinning the workspace user to 1000 produces two accounts sharing
+          it -- which silently gives an SSM session the workspace user's
+          identity.
+
+          Worth setting if you attach a home volume that has to keep stable
+          file ownership across instances. In that case make sure nothing else
+          on the machine claims the same UID.
+        '';
+        type = lib.types.nullOr lib.types.int;
+        default = null;
+      };
+
+      extraGroups = lib.mkOption {
+        description = ''
+          Supplementary groups for the workspace user. `wheel` is required:
+          the agent runs scripts as this user, and they need
+          `sudo nixos-rebuild`.
+        '';
+        type = lib.types.listOf lib.types.str;
+        default = [ "wheel" ];
+      };
     };
-
-    uid = lib.mkOption {
-      description = ''
-        UID for the workspace user, or null to let NixOS allocate one.
-
-        Null by default because a pinned UID collides in practice: the EC2
-        images enable `amazon-ssm-agent`, whose `ssm-user` is allocated the
-        first free UID (1000) without regard for statically assigned ones,
-        so pinning the workspace user to 1000 produces two accounts sharing
-        it -- which silently gives an SSM session the workspace user's
-        identity.
-
-        Worth setting if you attach a home volume that has to keep stable
-        file ownership across instances. In that case make sure nothing else
-        on the machine claims the same UID.
-      '';
-      type = lib.types.nullOr lib.types.int;
-      default = null;
-    };
-
-    extraGroups = lib.mkOption {
-      description = ''
-        Supplementary groups for the workspace user. `wheel` is required:
-        `coder_script` runs as this user and needs `sudo nixos-rebuild`.
-      '';
-      type = lib.types.listOf lib.types.str;
-      default = [ "wheel" ];
-    };
-
-
 
     runtimeDir = lib.mkOption {
       description = ''

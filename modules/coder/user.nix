@@ -3,22 +3,33 @@
 { config, lib, ... }:
 let
   cfg = config.coder;
+  user = cfg.user.name;
+
+  # Asked of the merged configuration rather than assumed to be the username.
+  # With `create = true` this module sets both and they agree; with it false
+  # the account is someone else's declaration, and NixOS's own default for a
+  # user who does not name a group is `users`. Getting this wrong is not an
+  # evaluation error -- it is a tmpfiles rule that fails at activation with an
+  # unknown group, which leaves /etc/nixos owned by root.
+  group = config.users.users.${user}.group or user;
 in
 lib.mkIf cfg.enable {
-  # The group always has to exist, since the user references it; only the
-  # numeric id is conditional.
-  users.groups.${cfg.user} = {
-    gid = lib.mkIf (cfg.uid != null) (lib.mkDefault cfg.uid);
+  # The group has to exist because the user references it; only the numeric id
+  # is conditional.
+  users.groups = lib.mkIf cfg.user.create {
+    ${user}.gid = lib.mkIf (cfg.user.uid != null) (lib.mkDefault cfg.user.uid);
   };
 
-  users.users.${cfg.user} = {
-    description = "Coder workspace user";
-    isNormalUser = true;
-    uid = lib.mkIf (cfg.uid != null) cfg.uid;
-    group = cfg.user;
-    home = "/home/${cfg.user}";
-    createHome = true;
-    extraGroups = cfg.extraGroups;
+  users.users = lib.mkIf cfg.user.create {
+    ${user} = {
+      description = "Coder workspace user";
+      isNormalUser = true;
+      uid = lib.mkIf (cfg.user.uid != null) cfg.user.uid;
+      group = user;
+      home = "/home/${user}";
+      createHome = true;
+      extraGroups = cfg.user.extraGroups;
+    };
   };
 
   # `coder_script` bodies run as the workspace user through its login shell
@@ -35,10 +46,10 @@ lib.mkIf cfg.enable {
   systemd.tmpfiles.rules = [
     "d ${cfg.logDir}   0755 root       root      -"
     "d ${cfg.stateDir} 0755 root       root      -"
-    "d /home/${cfg.user} 0700 ${cfg.user} ${cfg.user} -"
+    "d /home/${user} 0700 ${user} ${group} -"
     # Owned by the workspace user so the configuration can be edited without
     # sudo; rebuilding it still needs sudo.
-    "d ${cfg.flakeDir} 0755 ${cfg.user} ${cfg.user} -"
+    "d ${cfg.flakeDir} 0755 ${user} ${group} -"
   ];
 
   # Git identity is not set here. It is per-user, per-workspace state that

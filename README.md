@@ -86,6 +86,26 @@ One caveat worth knowing: a flake built from a git checkout ignores
 will not see it — this is the single most confusing thing about editing a
 flake in place.
 
+## The workspace user
+
+The agent runs as `coder.user.name` — `coder` by default — and this flake
+declares the account: a normal user, its own group, `wheel` for passwordless
+`sudo nixos-rebuild`, and a home directory the editors land in.
+
+```nix
+coder.user = {
+  name = "coder";
+  create = true; # false if the account is yours to declare
+};
+```
+
+With `create = false` nothing is asserted about the user, the group or the
+home directory, and `uid` and `extraGroups` stop meaning anything — you own
+all of it, including putting the account in `wheel`, without which every
+rebuild fails. The rest still works: the agent runs as that name and
+`/etc/nixos` is chowned to it and to whatever its primary group turns out to
+be.
+
 ## Per-workspace values
 
 Nothing is injected at evaluation time. Facts about the workspace are written
@@ -227,11 +247,11 @@ this configuration at hardware that is not EC2, all you need is
   scripts against the generation that is about to be replaced -- tools
   installed into a system with seconds to live, and a workspace reported
   ready minutes before it is.
-- **Pinning `coder.uid`** without checking what else claims that UID. The EC2
+- **Pinning `coder.user.uid`** without checking what else claims that UID. The EC2
   images enable `amazon-ssm-agent`, and its `ssm-user` takes the first free
   UID without regard for statically assigned ones -- so pinning the workspace
   user to 1000 yields two accounts sharing it, which silently gives an SSM
-  session the workspace user's identity. `coder.uid` is null by default for
+  session the workspace user's identity. `coder.user.uid` is null by default for
   this reason.
 
 ## Recovery

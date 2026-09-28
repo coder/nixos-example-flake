@@ -57,7 +57,7 @@ These are not style preferences. Each one is a bug that has already happened.
 4. **Per-workspace facts are runtime data.** `/run/coder/workspace.json`, read by a service. Pure
    evaluation cannot read an absolute path outside the flake, so consuming it at eval time would
    require `--impure` and break reproducibility.
-5. **`coder.uid` stays `null`.** `amazon-ssm-agent` creates `ssm-user` at the first free UID, so
+5. **`coder.user.uid` stays `null`.** `amazon-ssm-agent` creates `ssm-user` at the first free UID, so
    pinning 1000 yields two accounts sharing it and an SSM session with the workspace user's
    identity.
 6. **Shutdown staging lives in `ExecStop` of a `RemainAfterExit` oneshot.** A unit *started* during

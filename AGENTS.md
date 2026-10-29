@@ -1,10 +1,11 @@
 # AGENTS.md
 
-A reference NixOS configuration for Coder workspaces on AWS EC2, consumed by the
-[`aws-nixos`](https://registry.coder.com/templates/coder/aws-nixos) template.
+A reference NixOS configuration for Coder workspaces on AWS EC2 and Incus, consumed by the
+[`aws-nixos`](https://registry.coder.com/templates/coder/aws-nixos) and
+[`incus-nixos`](https://registry.coder.com/templates/coder-labs/incus-nixos) templates.
 
-The template treats this repository as **foreign code**. It clones it to `/etc/nixos` and runs a
-plain `nixos-rebuild switch --flake /etc/nixos#coder-workspace-ec2-<arch>` — no `--override-input`, no
+The templates treat this repository as **foreign code**. They clone it to `/etc/nixos` and run a
+plain `nixos-rebuild switch --flake /etc/nixos#coder-workspace-<platform>-<arch>` — no `--override-input`, no
 `--impure`, no injected inputs, no evaluation-time knowledge of the workspace. Anything that would
 break that contract belongs in the template or in a runtime file, not here.
 
@@ -15,9 +16,10 @@ changing it.
 
 | Path | Purpose |
 | --- | --- |
-| `flake.nix` | Two configurations, `coder-workspace-ec2-x86_64` and `coder-workspace-ec2-aarch64`. Inputs: nixpkgs and `coder-modules`. |
+| `flake.nix` | One configuration per platform and architecture: `coder-workspace-{ec2,incus}-{x86_64,aarch64}`. Inputs: nixpkgs and `coder-modules`. |
 | `configuration.nix` | The machine. Ordinary NixOS, zero `coder.*` references. This is the file a user edits. |
 | `hardware/ec2.nix` | Imports `amazon-image.nix`, and nothing else. |
+| `hardware/incus.nix` | Imports `incus-virtual-machine.nix`, plus the networkd DHCP setup the Incus images ship and an empty hostname. |
 
 The Coder integration — the agent unit, the workspace user, the shutdown hook
 and every `coder.*` option — is not here. It is
@@ -28,15 +30,16 @@ here; do not vendor it back.
 ## Verifying a change
 
 A broken commit on `main` is a broken workspace: every workspace rebuilds from this branch at boot.
-Evaluate **both** architectures before pushing — this catches essentially every module and option
-error without needing a builder for the other arch:
+Evaluate **every** platform and architecture before pushing — this catches essentially every module
+and option error without needing a builder for the other arch:
 
 ```console
-nix eval --raw .#nixosConfigurations.coder-workspace-ec2-x86_64.config.system.build.toplevel.drvPath
-nix eval --raw .#nixosConfigurations.coder-workspace-ec2-aarch64.config.system.build.toplevel.drvPath
+for host in ec2-x86_64 ec2-aarch64 incus-x86_64 incus-aarch64; do
+  nix eval --raw .#nixosConfigurations.coder-workspace-$host.config.system.build.toplevel.drvPath
+done
 ```
 
-Both must be silent. A `warning: Git tree is dirty` is fine locally; a lock-file warning is not —
+All must be silent. A `warning: Git tree is dirty` is fine locally; a lock-file warning is not —
 it means an input changed and `flake.lock` was not committed with it.
 
 To evaluate against an unpushed change to the modules, point the input at a local checkout:
@@ -59,8 +62,10 @@ agent, the user and the shutdown hook live in
    `cannot fetch input ... because it uses a relative path` and rewrites the lock on every build.
    The template passes nothing at evaluation time; per-workspace facts are runtime data in
    `/run/coder/workspace.json`, read by a service.
-2. **Keep the `amazon-image.nix` import, keep `nixpkgs.hostPlatform` explicit, and do not set
-   `boot.loader.*`.** Each produces a switch that succeeds and a machine that never boots again.
+2. **Keep the `amazon-image.nix` and `incus-virtual-machine.nix` imports, keep
+   `nixpkgs.hostPlatform` explicit, and do not set `boot.loader.*`.** Each produces a switch that
+   succeeds and a machine that never boots again. On Incus, also keep the Incus agent enabled: the
+   template reaches the VM through it on every start.
 3. **Do not add `/bin/bash`.** NixOS has `/bin/sh` only. Scripts that assume otherwise get fixed at
    the source; a compatibility symlink here hides the problem from everyone else.
 4. **`system.stateVersion` tracks the AMI's release**, not the newest one. It is a compatibility
@@ -75,8 +80,8 @@ The journal is not persistent, so anything that has to survive a reboot is writt
 | Rebuild transcripts | `/var/log/coder-nixos/rebuild-*.log`, plus `rebuild-latest.log` |
 | Shutdown staging | `/var/lib/coder-nixos/stage-on-shutdown.log`, result in `staged-at-shutdown` |
 | Rev the running system was built from | `/var/lib/coder-nixos/flake.rev` |
-| Boot script | `journalctl -u amazon-init`, script at `/run/coder/bootstrap.sh` |
-| A boot you cannot reach | `aws ec2 get-console-output --instance-id i-...` |
+| Boot script | `journalctl -u amazon-init` (EC2) or `journalctl -u coder-init` (Incus), script at `/run/coder/bootstrap.sh` |
+| A boot you cannot reach | `aws ec2 get-console-output --instance-id i-...`, or `incus console --show-log <instance>` |
 
 `/run/current-system` is the *activated* system; `/run/booted-system` is what the kernel booted and
 still points at the previous generation after a switch. Comparing the wrong one marks every fresh

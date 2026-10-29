@@ -1,5 +1,5 @@
 {
-  description = "Example NixOS configuration for Coder workspaces on AWS EC2";
+  description = "Example NixOS configuration for Coder workspaces on AWS EC2 and Incus";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
@@ -22,33 +22,47 @@
         "aarch64-linux"
       ];
 
+      # Each platform's hardware module is the only thing that differs between
+      # hosts; configuration.nix is shared.
+      platforms = {
+        ec2 = ./hardware/ec2.nix;
+        incus = ./hardware/incus.nix;
+      };
+
       # What the `#` in a flake reference selects, e.g.
       #   nixos-rebuild switch --flake /etc/nixos#coder-workspace-ec2-x86_64
-      # One per architecture, because a NixOS configuration is built for a
-      # fixed platform; "ec2" because hardware/ec2.nix is in all of them.
-      nameFor = system: "coder-workspace-ec2-${lib.head (lib.splitString "-" system)}";
+      # One per platform and architecture, because a NixOS configuration is
+      # built for a fixed platform.
+      nameFor = platform: system: "coder-workspace-${platform}-${lib.head (lib.splitString "-" system)}";
 
       workspaceFor =
-        system:
+        platform: system:
         lib.nixosSystem {
           modules = [
-            ./hardware/ec2.nix
+            platforms.${platform}
             ./configuration.nix
             coder-modules.nixosModules.default
             {
               # Not nixosSystem's `system` argument, which a hardware module
               # can outrank with an mkDefault of its own.
               nixpkgs.hostPlatform = system;
-              coder.flakeAttr = nameFor system;
+              coder.flakeAttr = nameFor platform system;
             }
           ];
         };
 
-      toplevelFor = system: self.nixosConfigurations.${nameFor system}.config.system.build.toplevel;
+      hosts = lib.cartesianProduct {
+        platform = lib.attrNames platforms;
+        system = systems;
+      };
+
+      toplevelFor = system: self.nixosConfigurations.${nameFor "ec2" system}.config.system.build.toplevel;
     in
     {
       nixosConfigurations = lib.listToAttrs (
-        map (system: lib.nameValuePair (nameFor system) (workspaceFor system)) systems
+        map (
+          { platform, system }: lib.nameValuePair (nameFor platform system) (workspaceFor platform system)
+        ) hosts
       );
 
       packages = lib.genAttrs systems (system: {
@@ -61,6 +75,7 @@
       nixosModules = {
         inherit (coder-modules.nixosModules) coder default;
         ec2 = ./hardware/ec2.nix;
+        incus = ./hardware/incus.nix;
       };
     };
 }

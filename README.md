@@ -1,8 +1,10 @@
-# NixOS configuration for Coder workspaces on AWS EC2
+# NixOS configuration for Coder workspaces on AWS EC2 and Incus
 
 This is the reference NixOS configuration used by the [`aws-nixos`](https://github.com/coder/registry/tree/main/registry/coder/templates/aws-nixos)
-Coder template. It targets the official NixOS EC2 AMIs and declares the Coder
-agent as a systemd unit, so the agent survives `nixos-rebuild`.
+and [`incus-nixos`](https://github.com/coder/registry/tree/main/registry/coder-labs/templates/incus-nixos)
+Coder templates. It targets the official NixOS EC2 AMIs and the `images:nixos/*`
+Incus VM images, and declares the Coder agent as a systemd unit, so the agent
+survives `nixos-rebuild`.
 
 It is meant to be forked. The template points at a flake reference and an
 attribute name; everything about the machine — packages, services, users, Nix
@@ -12,9 +14,10 @@ settings — is decided here, not in the template.
 
 | Path | Owner | Contents |
 | --- | --- | --- |
-| `flake.nix` | you | inputs and the per-architecture `nixosConfigurations` |
+| `flake.nix` | you | inputs and the per-platform, per-architecture `nixosConfigurations` |
 | `configuration.nix` | **you** | the environment: packages, `nix.*`, swap, timezone |
 | `hardware/ec2.nix` | platform | imports `amazon-image.nix` |
+| `hardware/incus.nix` | platform | imports `incus-virtual-machine.nix`, networkd DHCP |
 | `coder-modules` input | Coder | the agent unit, the workspace user, shutdown staging |
 
 The Coder integration is not in this repository. It lives in
@@ -47,12 +50,19 @@ The attribute after `#` in the flake reference selects it:
 nixos-rebuild switch --flake 'github:coder/nixos-example-flake#coder-workspace-ec2-x86_64'
 ```
 
-This repository ships `coder-workspace-ec2-x86_64` and `coder-workspace-ec2-aarch64`. The template
-derives the name from the chosen EC2 instance type, so the AMI architecture,
-`coder_agent.arch` and the attribute always agree. Add your own entries to
-`nixosConfigurations` and point the template's `flake_attr` variable at them —
-it accepts an `$ARCH` placeholder (`coder-workspace-ec2-$ARCH`) if you keep the
-per-architecture split, or a fixed name if you do not.
+This repository ships one configuration per platform and architecture:
+`coder-workspace-ec2-x86_64`, `coder-workspace-ec2-aarch64`,
+`coder-workspace-incus-x86_64` and `coder-workspace-incus-aarch64`. They share
+`configuration.nix` and differ only in their `hardware/` module. The EC2
+template derives the architecture from the chosen instance type and the Incus
+template from its `arch` variable, so the image architecture, `coder_agent.arch`
+and the attribute always agree. Add your own entries to `nixosConfigurations`
+and point the template's `flake_attr` variable at them — it accepts an `$ARCH`
+placeholder (`coder-workspace-ec2-$ARCH`) if you keep the per-architecture
+split, or a fixed name if you do not.
+
+Pick the configuration that matches the platform: an EC2 configuration on an
+Incus VM (or the reverse) switches successfully and never boots again.
 
 ## Where the configuration lives on the workspace
 
@@ -65,8 +75,8 @@ sudo nixos-rebuild switch --flake /etc/nixos#coder-workspace-ec2-x86_64
 
 The attribute has to be named. `nixos-rebuild` finds `/etc/nixos/flake.nix` on
 its own, but with no `#` it looks for a configuration named after the
-machine's hostname — which on EC2 is whatever DHCP handed out, not
-`coder-workspace-ec2-x86_64`. A bare `sudo nixos-rebuild switch` therefore fails
+machine's hostname — which on EC2 is whatever DHCP handed out and on Incus is
+the workspace name, not `coder-workspace-ec2-x86_64`. A bare `sudo nixos-rebuild switch` therefore fails
 with `does not provide attribute ... ip-172-31-2-88.eu-west-3.compute.internal`.
 
 There are no overrides, no `--impure` and no injected inputs, so what you get
@@ -136,7 +146,8 @@ it.
 
 If you want a schedule, `system.autoUpgrade` is upstream's and belongs in
 `configuration.nix`, where the machine's owner can see it. Order it behind
-whatever does the boot-time rebuild (`amazon-init.service` on EC2) and have it
+whatever does the boot-time rebuild (`amazon-init.service` on EC2,
+`coder-init.service` on Incus) and have it
 sync `/etc/nixos` first: `--refresh` does nothing for a local path flake, so a
 checkout that is behind its remote would rebuild unchanged forever.
 
@@ -157,12 +168,14 @@ module and option error:
 ```console
 nix eval --raw .#nixosConfigurations.coder-workspace-ec2-x86_64.config.system.build.toplevel.drvPath
 nix eval --raw .#nixosConfigurations.coder-workspace-ec2-aarch64.config.system.build.toplevel.drvPath
-nix build .#toplevel            # builds the closure for your native arch
+nix eval --raw .#nixosConfigurations.coder-workspace-incus-x86_64.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.coder-workspace-incus-aarch64.config.system.build.toplevel.drvPath
+nix build .#toplevel            # builds the EC2 closure for your native arch
 ```
 
-Evaluating both attributes is worth the few seconds: the aarch64 configuration
-is otherwise only exercised the first time somebody picks a Graviton instance
-type.
+Evaluating every attribute is worth the few seconds: the aarch64 and Incus
+configurations are otherwise only exercised the first time somebody picks a
+Graviton instance type or an Incus host.
 
 `flake.lock` is committed on purpose. Without it every workspace resolves
 nixpkgs independently at boot, which is slow and not reproducible — and a lock
@@ -190,6 +203,14 @@ this configuration at hardware that is not EC2, all you need is
 - **Removing the `amazon-image.nix` import.** It declares the root filesystem,
   `boot.growPartition`, the bootloader and the Nitro/Xen initrd modules. Without
   it the switch succeeds and the instance never boots again.
+- **Removing the `incus-virtual-machine.nix` import, or disabling
+  `virtualisation.incus.agent`.** Besides the root filesystem and bootloader,
+  it provides the Incus agent, which is how the Incus template reaches the VM
+  on every start. Without it the first rebuild succeeds and no later start
+  ever brings the agent up.
+- **Replacing the systemd-networkd setup in `hardware/incus.nix`** with the
+  NixOS dhcpcd default. The Incus images use networkd; switching away drops the
+  address the boot script is downloading over.
 - **Setting `boot.loader.*`.** A conflict with the platform module produces a
   switch that *succeeds* and a reboot that fails, which you discover when a
   workspace is restarted hours later.
@@ -243,5 +264,12 @@ console:
 
 ```console
 aws ec2 get-console-output --instance-id i-0123456789abcdef0 --output text
+```
+
+On Incus, read the console log or the boot script from the host:
+
+```console
+incus console --show-log coder-<owner>-<workspace>
+incus exec coder-<owner>-<workspace> -- journalctl -u coder-init
 ```
 

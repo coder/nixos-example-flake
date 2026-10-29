@@ -3,7 +3,7 @@
 # modules, because how a machine uses Nix is its owner's business.
 { pkgs, ... }:
 {
-  # Tracks the release the AMI was built from, not the newest one.
+  # Tracks the release the AMI or Incus image was built from, not the newest one.
   system.stateVersion = "26.05";
 
   nix.settings.experimental-features = [
@@ -35,13 +35,13 @@
   # packages such as CUDA, and community flakes); without it those compile
   # locally. `extra-` appends to the defaults rather than replacing
   # cache.nixos.org. This only takes effect once a system with it has been
-  # activated, so the first rebuild from the AMI does not use it yet.
+  # activated, so the first rebuild from the image does not use it yet.
   nix.settings.extra-substituters = [ "https://nix-community.cachix.org" ];
   nix.settings.extra-trusted-public-keys = [
     "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
   ];
 
-  # The AMI configures no swap at all, and a rebuild that has to compile
+  # The AMI and Incus images configure no swap at all, and a rebuild that has to compile
   # anything will exhaust a small instance. Cheap insurance; the real fix is
   # not to pick a 1-2 GiB instance type.
   zramSwap.enable = true;
